@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Sin Novedades</string>
-    <string name="service_summary">Cubre Novedades e impide pulsar ese botón en WhatsApp.</string>
-    <string name="service_description">Detecta la barra inferior de WhatsApp y coloca una cubierta sobre el botón Novedades para ocultarlo y bloquear los toques. Android concede acceso al contenido visible: esta app analiza la navegación de WhatsApp en el dispositivo y comprueba cuándo se cambia de aplicación para retirar la cubierta. No guarda mensajes, no envía datos y no pulsa botones por ti. Puedes desactivarla cuando quieras.</string>
+    <string name="service_summary">Cubre Novedades y bloquea toques y deslizamientos entre pestañas.</string>
+    <string name="service_description">Detecta la barra inferior de WhatsApp y cubre Novedades. En Android 13 o posterior puede comprobar los toques antes de transmitirlos y bloquear los deslizamientos horizontales en la pantalla de navegación. Solo transmite tus propios toques permitidos; no cambia de pestaña por su cuenta. Android concede acceso al contenido visible y al control táctil. Todo se procesa en el dispositivo: no guarda mensajes ni envía datos. Puedes desactivarla cuando quieras.</string>
 </resources>

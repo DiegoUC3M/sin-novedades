@@ -5,9 +5,13 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.WindowInsets;
+import android.view.accessibility.AccessibilityEvent;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -20,6 +24,8 @@ public final class FixtureActivity extends Activity {
     private TextView state;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private int events;
+    private long muteUntil;
+    private boolean navigation;
     private final Runnable storm=new Runnable() {
         public void run() { state.setText("Evento de prueba "+(++events)); handler.postDelayed(this,15); }
     };
@@ -31,7 +37,7 @@ public final class FixtureActivity extends Activity {
     }
 
     private void base(String title) {
-        root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
+        root=new TestLayout(); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xffffffff);
         getWindow().setDecorFitsSystemWindows(false);
         root.setOnApplyWindowInsetsListener((v,insets)->{
@@ -57,12 +63,21 @@ public final class FixtureActivity extends Activity {
     }
 
     private void showNavigation() {
+        navigation=true;
+        if (getIntent().getBooleanExtra("quiet_return",false)) muteUntil=SystemClock.uptimeMillis()+1200;
         base("Barra sintética para verificar la cubierta");
         stats.edit().putString("screen","navigation").apply();
         Button chat=new Button(this); chat.setText("Entrar en un chat de prueba");
         chat.setOnClickListener(v->showChat()); root.addView(chat); remember(chat,"chat_center");
-        spacer();
-        LinearLayout bar=new LinearLayout(this);
+        TextView content=new TextView(this); content.setText("Zona de gestos");
+        content.setGravity(Gravity.CENTER);
+        root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
+        remember(content,"content_center");
+        content.setOnClickListener(v->count("content_taps"));
+        content.setOnLongClickListener(v->{ count("long_presses"); return true; });
+        LinearLayout bar=new LinearLayout(this) {
+            @Override public CharSequence getAccessibilityClassName() { return "android.widget.TabWidget"; }
+        };
         bar.setOrientation(LinearLayout.HORIZONTAL);
         // Old versions that omit INCLUDE_NOT_IMPORTANT_VIEWS lose this container.
         bar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -86,13 +101,49 @@ public final class FixtureActivity extends Activity {
 
     private void showChat() {
         handler.removeCallbacks(storm);
+        muteUntil=0; navigation=false;
         base("Conversación sintética");
         stats.edit().putString("screen","chat").apply();
         Button back=new Button(this); back.setText("Volver a la barra");
         back.setOnClickListener(v->showNavigation()); root.addView(back);
+        remember(back,"back_center");
         spacer();
         EditText input=new EditText(this); input.setHint("Escribe aquí");
         root.addView(input,new LinearLayout.LayoutParams(-1,64));
+        remember(input,"editor_center");
+    }
+
+    private void count(String key) { stats.edit().putInt(key,stats.getInt(key,0)+1).apply(); }
+
+    private final class TestLayout extends LinearLayout {
+        private float startX,startY;
+        private boolean horizontal,vertical;
+        TestLayout() { super(FixtureActivity.this); }
+        @Override public boolean onInterceptTouchEvent(MotionEvent e) {
+            if (!navigation) return false;
+            if (e.getActionMasked()==MotionEvent.ACTION_DOWN) {
+                startX=e.getX(); startY=e.getY(); horizontal=false; vertical=false;
+            } else if (e.getActionMasked()==MotionEvent.ACTION_MOVE) {
+                float dx=Math.abs(e.getX()-startX),dy=Math.abs(e.getY()-startY);
+                int slop=ViewConfiguration.get(FixtureActivity.this).getScaledTouchSlop();
+                if (dx>slop && dx>=dy && !vertical) { horizontal=true; return true; }
+                if (dy>slop && dy>dx) { vertical=true; return true; }
+            }
+            return false;
+        }
+        @Override public boolean onTouchEvent(MotionEvent e) {
+            if (e.getActionMasked()==MotionEvent.ACTION_UP) {
+                if (horizontal) count("horizontal_swipes");
+                if (vertical) count("vertical_scrolls");
+            }
+            return true;
+        }
+        @Override public boolean requestSendAccessibilityEvent(View child,AccessibilityEvent e) {
+            return SystemClock.uptimeMillis()>=muteUntil && super.requestSendAccessibilityEvent(child,e);
+        }
+        @Override public void sendAccessibilityEventUnchecked(AccessibilityEvent e) {
+            if (SystemClock.uptimeMillis()>=muteUntil) super.sendAccessibilityEventUnchecked(e);
+        }
     }
 
     @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); super.onDestroy(); }

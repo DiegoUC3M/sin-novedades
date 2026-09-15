@@ -65,7 +65,7 @@ public final class MainActivity extends Activity {
         badge.setLetterSpacing(0.1f); layout.addView(badge);
         TextView title=text("Sin Novedades",32,foreground);
         title.setTypeface(null,Typeface.BOLD); margin(layout,title,12);
-        margin(layout,text("Oculta el botón y bloquea sus pulsaciones.",18,muted),8);
+        margin(layout,text("Oculta Novedades y bloquea el acceso desde la barra.",18,muted),8);
 
         status=text("",16,foreground);
         status.setPadding(dp(18),dp(16),dp(18),dp(16));
@@ -79,6 +79,16 @@ public final class MainActivity extends Activity {
         enabled.setOnCheckedChangeListener((v,value)->{ prefs.edit().putBoolean("enabled",value).apply(); refresh(); });
         margin(layout,enabled,16);
         margin(layout,text("La cubierta aparece únicamente cuando se reconoce la barra inferior de WhatsApp. No cambia de pestaña automáticamente.",14,muted),2);
+
+        Switch gestures=new Switch(this);
+        gestures.setText("Protección táctil reforzada"); gestures.setTextSize(16); gestures.setTextColor(foreground);
+        gestures.setMinHeight(dp(60)); gestures.setChecked(prefs.getBoolean("gestures",true));
+        gestures.setEnabled(Build.VERSION.SDK_INT>=33);
+        gestures.setOnCheckedChangeListener((v,value)->{ prefs.edit().putBoolean("gestures",value).apply(); refresh(); });
+        margin(layout,gestures,12);
+        margin(layout,text(Build.VERSION.SDK_INT>=33
+            ? "Comprueba el botón antes de aceptar el toque, también al volver de un chat. Bloquea los deslizamientos horizontales en la pantalla con la barra: cambia de sección pulsando las otras pestañas."
+            : "El bloqueo de deslizamientos necesita Android 13 o posterior. En este móvil se mantiene la cubierta del botón.",14,muted),2);
 
         permission=button("Activar accesibilidad",v->openPermission()); margin(layout,permission,24);
         margin(layout,button("Abrir WhatsApp",v->openWhatsApp()),8);
@@ -97,9 +107,9 @@ public final class MainActivity extends Activity {
 
         TextView privacy=text("Privacidad",18,foreground);
         privacy.setTypeface(null,Typeface.BOLD); margin(layout,privacy,28);
-        margin(layout,text("Accesibilidad concede acceso al contenido visible. Esta app busca la barra de WhatsApp en tu móvil y comprueba cuándo sales de la aplicación para retirar la cubierta. No guarda mensajes, no tiene permiso de Internet y no pulsa controles por ti.",14,muted),8);
+        margin(layout,text("Accesibilidad permite buscar la barra y filtrar los gestos en WhatsApp. La protección táctil transmite tus toques permitidos en el mismo punto que has pulsado. No navega por su cuenta, no guarda mensajes y no tiene permiso de Internet.",14,muted),8);
         margin(layout,button("Ayuda de instalación",v->help()),16);
-        margin(layout,text("Versión 0.2.0 · Android 8 o posterior\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
+        margin(layout,text("Versión 0.3.0 · Cubierta: Android 8+ · Protección táctil: Android 13+\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
         refresh();
     }
 
@@ -122,7 +132,7 @@ public final class MainActivity extends Activity {
         boolean granted=serviceEnabled(),on=prefs.getBoolean("enabled",true);
         setText(status,!on ? "Protección en pausa" : !granted ? "Falta activar el permiso de accesibilidad"
             : !ServiceStatus.connected ? "Permiso concedido. Esperando a que Android conecte el servicio."
-            : "Servicio conectado.\nAbre WhatsApp para comprobar la cubierta.");
+            : "Servicio conectado.\n"+ServiceStatus.touch);
         setText(permission,granted ? "Gestionar accesibilidad" : "Activar accesibilidad");
         SharedPreferences saved=ServiceStatus.saved(this);
         long when=saved.getLong("time",0);
@@ -150,9 +160,12 @@ public final class MainActivity extends Activity {
             +"\nModelo: "+Build.MANUFACTURER+" "+Build.MODEL
             +"\nWhatsApp: "+version("com.whatsapp")+"; Business: "+version("com.whatsapp.w4b")
             +"\nPermiso: "+serviceEnabled()+"; interruptor: "+prefs.getBoolean("enabled",true)
+            +"\nProtección reforzada activada: "+prefs.getBoolean("gestures",true)
             +"\nServicio conectado: "+ServiceStatus.connected+"; última inspección hace "+elapsed+" s"
             +"\nEstado actual: "+ServiceStatus.current
             +"\nEventos de WhatsApp: "+ServiceStatus.whatsappEvents
+            +"\nProtección táctil: "+ServiceStatus.touch
+            +"\nToques bloqueados: "+ServiceStatus.blockedTaps+"; deslizamientos bloqueados: "+ServiceStatus.blockedSwipes
             +"\nÚltima comprobación de WhatsApp (fecha): "+saved.getLong("time",0)
             +"\n"+saved.getString("report","Todavía no hay ninguna comprobación de WhatsApp.");
         ClipboardManager clipboard=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
@@ -164,7 +177,7 @@ public final class MainActivity extends Activity {
         Runnable open=()->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
         if (serviceEnabled() || prefs.getBoolean("disclosure",false)) { open.run(); return; }
         new AlertDialog.Builder(this).setTitle("Activar Sin Novedades")
-            .setMessage("Android pedirá permiso para ver el contenido de la pantalla. Sin Novedades lo utiliza para localizar y cubrir el botón de WhatsApp. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
+            .setMessage("Android pedirá acceso al contenido de la pantalla y al control táctil. Sin Novedades lo utiliza para cubrir el botón y bloquear los deslizamientos entre pestañas. Solo transmite los toques que tú haces en zonas permitidas. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
             .setNegativeButton("Ahora no",null).setPositiveButton("Continuar",(d,w)->{
                 prefs.edit().putBoolean("disclosure",true).apply(); open.run();
             }).show();

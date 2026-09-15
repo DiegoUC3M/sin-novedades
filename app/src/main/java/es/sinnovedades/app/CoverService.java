@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** An opaque, touch-consuming window. This service never clicks or navigates. */
+/** An opaque button cover plus an optional Android 13+ physical-input gate. */
 public final class CoverService extends AccessibilityService implements SharedPreferences.OnSharedPreferenceChangeListener {
     static final String PREFS="cover";
     private final Handler handler=new Handler(Looper.getMainLooper());
@@ -35,6 +35,11 @@ public final class CoverService extends AccessibilityService implements SharedPr
     private TabDetector.Box covered;
     private boolean stopped;
     private boolean whatsappInFront;
+    private boolean touchScope;
+    private TabDetector.Box touchArea;
+    private TabDetector.Box keyboardArea;
+    private TouchGuard touchGuard;
+    private TouchSnapshot touchState=TouchSnapshot.empty();
     private long nextInspection;
     private final Runnable inspect=new Runnable() {
         public void run() {
@@ -44,7 +49,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
                 // Retry even when there is no cover yet: the first snapshot can
                 // precede WhatsApp's navigation layout or the service connection.
                 if (!stopped && prefs!=null && prefs.getBoolean("enabled",true))
-                    scheduleInspection(whatsappInFront ? 500 : 2000);
+                    scheduleInspection(whatsappInFront ? 180 : 2000);
             }
         }
     };
@@ -58,6 +63,13 @@ public final class CoverService extends AccessibilityService implements SharedPr
         manager=(WindowManager)getSystemService(WINDOW_SERVICE);
         prefs=getSharedPreferences(PREFS,MODE_PRIVATE);
         prefs.registerOnSharedPreferenceChangeListener(this);
+        if (Build.VERSION.SDK_INT>=33) {
+            // Returning from a chat can reuse the same window ID. Cached nodes
+            // must not tell the input gate that the old chat is still visible.
+            setCacheEnabled(false);
+            try { touchGuard=new TouchGuard(this); }
+            catch (RuntimeException e) { ServiceStatus.touch="No se pudo iniciar la protección táctil: "+e.getClass().getSimpleName(); }
+        }
         ServiceStatus.connected=true;
         ServiceStatus.checked("Servicio conectado. Esperando a WhatsApp.");
         scheduleInspection(0);
@@ -70,7 +82,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
             || event.getEventType()==AccessibilityEvent.TYPE_WINDOWS_CHANGED;
         if (isWhatsApp(pkg)) {
             ServiceStatus.whatsappEvents++;
-            scheduleInspection(windowChange ? 0 : 45);
+            scheduleInspection(0);
         } else if (windowChange || pkg==null) {
             // Recheck focus on any window change, including our own overlay.
             // Other applications' event text is never read.
@@ -94,11 +106,12 @@ public final class CoverService extends AccessibilityService implements SharedPr
 
     private void inspectWindow() {
         whatsappInFront=false;
+        touchState=TouchSnapshot.empty();
         if (stopped || prefs==null) { removeCover(); return; }
-        if (!prefs.getBoolean("enabled",true)) { inactive("Protección en pausa."); return; }
+        if (!prefs.getBoolean("enabled",true)) { touchScope=false; updateTouchMode(); inactive("Protección en pausa."); return; }
         PowerManager power=(PowerManager)getSystemService(POWER_SERVICE);
         KeyguardManager keyguard=(KeyguardManager)getSystemService(KEYGUARD_SERVICE);
-        if (!power.isInteractive() || keyguard.isKeyguardLocked()) { inactive("Pantalla apagada o bloqueada."); return; }
+        if (!power.isInteractive() || keyguard.isKeyguardLocked()) { touchScope=false; updateTouchMode(); inactive("Pantalla apagada o bloqueada."); return; }
         AccessibilityNodeInfo root=null;
         String windowDetails="";
         try {
@@ -106,13 +119,16 @@ public final class CoverService extends AccessibilityService implements SharedPr
             // Only the focused application's root is obtained; other app trees are not scanned.
             List<AccessibilityWindowInfo> windows=getWindows();
             String obstruction="";
+            keyboardArea=null;
             StringBuilder metadata=new StringBuilder("Ventanas: ");
             try {
                 for (AccessibilityWindowInfo w:windows) {
                     Rect bounds=new Rect(); w.getBoundsInScreen(bounds);
                     metadata.append(w.getType()).append(w.isFocused()?"F":"").append(w.isActive()?"A":"").append(' ');
-                    if (w.getType()==AccessibilityWindowInfo.TYPE_INPUT_METHOD && !bounds.isEmpty())
+                    if (w.getType()==AccessibilityWindowInfo.TYPE_INPUT_METHOD && !bounds.isEmpty()) {
                         obstruction="Teclado visible: cubierta retirada.";
+                        keyboardArea=new TabDetector.Box(bounds.left,bounds.top,bounds.right,bounds.bottom);
+                    }
                     if (w.getType()==AccessibilityWindowInfo.TYPE_SYSTEM && w.isFocused() && !bounds.isEmpty())
                         obstruction="Una ventana del sistema tiene el foco.";
                     if (w.getType()==AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY && (w.isFocused() || w.isActive())
@@ -129,8 +145,10 @@ public final class CoverService extends AccessibilityService implements SharedPr
             windowDetails=metadata.toString();
             if (root==null) root=getRootInActiveWindow();
             if (root==null) { inactive("Android no ha entregado una ventana accesible."); return; }
-            if (!isWhatsApp(root.getPackageName())) { inactive("Esperando a que abras WhatsApp."); return; }
+            if (!isWhatsApp(root.getPackageName())) { touchScope=false; inactive("Esperando a que abras WhatsApp."); return; }
             whatsappInFront=true;
+            touchScope=true;
+            touchArea=box(root);
             if (!obstruction.isEmpty()) {
                 removeCover(); ServiceStatus.whatsapp(this,obstruction,windowDetails); return;
             }
@@ -138,7 +156,9 @@ public final class CoverService extends AccessibilityService implements SharedPr
             float density=getResources().getDisplayMetrics().density;
             Scan scan=scan(root,screen,density);
             TabDetector.Box found=TabDetector.detect(scan.tabs,screen,density,scan.editor);
+            touchState=new TouchSnapshot(found!=null,found,screen,root.getWindowId(),String.valueOf(root.getPackageName()));
             String details="Ventana: "+screen+"; densidad: "+density+"\n"+windowDetails
+                +"\n"+ServiceStatus.touch
                 +"\nNodos: "+scan.visited+"; límite: "+scan.limited+"; editor: "+scan.editor
                 +"\nEtiquetas: "+scan.labels+"; botones candidatos: "+scan.tabs.size()+"\n"+scan.report;
             if (found==null) {
@@ -157,8 +177,37 @@ public final class CoverService extends AccessibilityService implements SharedPr
             else ServiceStatus.checked(status);
         } finally {
             if (root!=null) root.recycle();
+            updateTouchMode();
         }
     }
+
+    private void updateTouchMode() {
+        if (touchGuard!=null) touchGuard.setWanted(!stopped && touchScope && prefs!=null
+            && prefs.getBoolean("enabled",true) && prefs.getBoolean("gestures",true));
+    }
+
+    static final class TouchSnapshot {
+        final boolean navigation;
+        final TabDetector.Box target,screen;
+        final int windowId;
+        final String pkg;
+        TouchSnapshot(boolean nav,TabDetector.Box target,TabDetector.Box screen,int windowId,String pkg) {
+            navigation=nav; this.target=target; this.screen=screen; this.windowId=windowId; this.pkg=pkg;
+        }
+        static TouchSnapshot empty() { return new TouchSnapshot(false,null,null,-1,""); }
+        boolean samePage(TouchSnapshot other) {
+            return navigation && other.navigation && windowId==other.windowId && pkg.equals(other.pkg)
+                && screen.same(other.screen) && target.same(other.target);
+        }
+    }
+
+    TouchSnapshot touchSnapshot() {
+        inspectWindow();
+        return touchState;
+    }
+
+    TabDetector.Box touchArea() { return touchArea; }
+    TabDetector.Box keyboardArea() { return keyboardArea; }
 
     private static final class Scan {
         final List<TabDetector.Tab> tabs=new ArrayList<>();
@@ -180,7 +229,11 @@ public final class CoverService extends AccessibilityService implements SharedPr
                     // descendants. Traverse children before filtering this node.
                     for (int i=0;i<node.getChildCount();i++) {
                         AccessibilityNodeInfo child=node.getChild(i);
-                        if (child!=null) queue.addLast(child);
+                        if (child!=null) {
+                            // Visit the footer before long chat/community lists.
+                            if (box(child).bottom>=screen.bottom-260*d) queue.addFirst(child);
+                            else queue.addLast(child);
+                        }
                     }
                     if (!node.isVisibleToUser()) continue;
                     TabDetector.Box b=box(node);
@@ -315,7 +368,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
     private void inactive(String status) { removeCover(); ServiceStatus.checked(status); }
 
     @Override public void onSharedPreferenceChanged(SharedPreferences p,String key) {
-        if ("enabled".equals(key) || "color".equals(key)) scheduleInspection(0);
+        if ("enabled".equals(key) || "color".equals(key) || "gestures".equals(key)) scheduleInspection(0);
     }
     @Override public void onConfigurationChanged(Configuration c) { super.onConfigurationChanged(c); removeCover(); scheduleInspection(120); }
     @Override public void onInterrupt() { inactive("Android ha interrumpido el servicio."); }
@@ -323,6 +376,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
     @Override public void onDestroy() { shutdown(); super.onDestroy(); }
     private void shutdown() {
         stopped=true; handler.removeCallbacksAndMessages(null); removeCover();
+        if (touchGuard!=null) { touchGuard.close(); touchGuard=null; }
         nextInspection=0;
         ServiceStatus.connected=false;
         ServiceStatus.checked("El servicio se ha desconectado.");

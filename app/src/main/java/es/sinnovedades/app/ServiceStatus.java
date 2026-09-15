@@ -12,6 +12,8 @@ final class ServiceStatus {
     static boolean connected;
     static long lastInspection;
     static long whatsappEvents;
+    static long blockedTaps,blockedSwipes;
+    static String touch="El bloqueo de deslizamientos requiere Android 13 o posterior.";
     static String current="El servicio aún no se ha conectado.";
     private static String previousReport="";
     private static long lastWrite;
