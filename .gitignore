@@ -1,0 +1,12 @@
+.gradle/
+.idea/
+local.properties
+build/
+app/build/
+.signing/
+*.jks
+*.keystore
+*.p12
+*.idsig
+__pycache__/
+*.log

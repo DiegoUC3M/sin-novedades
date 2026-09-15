@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sin Novedades</string>
+    <string name="service_summary">Cubre Novedades e impide pulsar ese botón en WhatsApp.</string>
+    <string name="service_description">Detecta la barra inferior de WhatsApp y coloca una cubierta sobre el botón Novedades para ocultarlo y bloquear los toques. Android concede acceso al contenido visible: esta app analiza la navegación de WhatsApp en el dispositivo y comprueba cuándo se cambia de aplicación para retirar la cubierta. No guarda mensajes, no envía datos y no pulsa botones por ti. Puedes desactivarla cuando quieras.</string>
+</resources>
