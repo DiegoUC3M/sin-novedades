@@ -107,9 +107,9 @@ public final class MainActivity extends Activity {
 
         TextView privacy=text("Privacidad",18,foreground);
         privacy.setTypeface(null,Typeface.BOLD); margin(layout,privacy,28);
-        margin(layout,text("Accesibilidad permite buscar la barra y filtrar los gestos en WhatsApp. La protección táctil transmite tus toques permitidos en el mismo punto que has pulsado. No navega por su cuenta, no guarda mensajes y no tiene permiso de Internet.",14,muted),8);
+        margin(layout,text("Accesibilidad permite buscar la barra y filtrar los gestos en WhatsApp. La protección táctil ejecuta tus pulsaciones permitidas sobre el control que has tocado. No navega por su cuenta, no guarda mensajes y no tiene permiso de Internet.",14,muted),8);
         margin(layout,button("Ayuda de instalación",v->help()),16);
-        margin(layout,text("Versión 0.3.1 · Cubierta: Android 8+ · Protección táctil: Android 13+\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
+        margin(layout,text("Versión 0.3.2 · Cubierta: Android 8+ · Protección táctil: Android 13+\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
         refresh();
     }
 
@@ -170,6 +170,11 @@ public final class MainActivity extends Activity {
             +"\n"+ServiceStatus.touchDetails
             +"\nEventos táctiles recibidos: "+ServiceStatus.touchEvents
             +"\nToques bloqueados: "+ServiceStatus.blockedTaps+"; deslizamientos bloqueados: "+ServiceStatus.blockedSwipes
+            +"\nPulsaciones directas aceptadas: "+ServiceStatus.directTaps
+            +"; gestos de respaldo solicitados: "+ServiceStatus.replayTaps+"; completados: "+ServiceStatus.completedReplays
+            +"; pulsaciones canceladas: "+ServiceStatus.cancelledTaps
+            +"\nÚltima pulsación (fecha): "+saved.getLong("tap_time",0)
+            +"\n"+saved.getString("tap_result","Todavía no hay una pulsación permitida comprobada.")
             +"\nÚltimo estado táctil en WhatsApp (fecha): "+saved.getLong("touch_time",0)
             +"\n"+saved.getString("touch_report","Todavía no hay una comprobación táctil en WhatsApp.")
             +"\nÚltima comprobación de WhatsApp (fecha): "+saved.getLong("time",0)
@@ -191,7 +196,7 @@ public final class MainActivity extends Activity {
         }
         if (serviceEnabled() || prefs.getBoolean("disclosure",false)) { open.run(); return; }
         new AlertDialog.Builder(this).setTitle("Activar Sin Novedades")
-            .setMessage("Android pedirá acceso al contenido de la pantalla y al control táctil. Sin Novedades lo utiliza para cubrir el botón y bloquear los deslizamientos entre pestañas. Solo transmite los toques que tú haces en zonas permitidas. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
+            .setMessage("Android pedirá acceso al contenido de la pantalla y al control táctil. Sin Novedades lo utiliza para cubrir el botón y bloquear los deslizamientos entre pestañas. Solo ejecuta las pulsaciones que tú haces sobre controles permitidos. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
             .setNegativeButton("Ahora no",null).setPositiveButton("Continuar",(d,w)->{
                 prefs.edit().putBoolean("disclosure",true).apply(); open.run();
             }).show();

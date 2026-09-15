@@ -34,6 +34,18 @@ final class TouchGuard implements TouchInteractionController.Callback {
     private float downX,downY;
     private CoverService.TouchSnapshot initial;
     private Region basePassthrough=new Region();
+    private PendingReplay pendingReplay;
+    private static final class PendingReplay {
+        final float x,y;
+        final boolean longPress;
+        final CoverService.TouchSnapshot page;
+        boolean prepared,dispatched;
+        Runnable timeout;
+        PendingReplay(float x,float y,boolean longPress,CoverService.TouchSnapshot page) {
+            this.x=(float)Math.floor(x); this.y=(float)Math.floor(y);
+            this.longPress=longPress; this.page=page;
+        }
+    }
 
     TouchGuard(CoverService service) {
         this.service=service;
@@ -45,6 +57,8 @@ final class TouchGuard implements TouchInteractionController.Callback {
         if (closed) return;
         wanted=value;
         try {
+            if (!wanted && pendingReplay!=null && !pendingReplay.dispatched)
+                finishReplay(pendingReplay,false,"Pulsación cancelada al salir de WhatsApp o pausar la protección.");
             updatePassthrough();
             if (!physicalDown && !replaying) applyMode();
         } catch (RuntimeException failure) { failed(failure); }
@@ -146,12 +160,20 @@ final class TouchGuard implements TouchInteractionController.Callback {
         try {
             ServiceStatus.touchEvents++;
             receivedInput=true;
+            if (pendingReplay!=null) {
+                if (pendingReplay.dispatched) return;
+                if (event.getActionMasked()==MotionEvent.ACTION_DOWN)
+                    finishReplay(pendingReplay,false,"Respaldo cancelado por un nuevo toque.");
+            }
             // Android can notify us of DOWN even after a passthrough region has
             // already delegated it. Never request a second state transition or
             // replay that touch; the native stream is already reaching its target.
             int state=controller.getState();
             if (state==TouchInteractionController.STATE_DELEGATING
-                    || state==TouchInteractionController.STATE_TOUCH_EXPLORING) return;
+                    || state==TouchInteractionController.STATE_TOUCH_EXPLORING) {
+                if (event.getActionMasked()==MotionEvent.ACTION_DOWN) { initial=null; policy.cancel(); }
+                return;
+            }
             int action=event.getActionMasked();
             if (action==MotionEvent.ACTION_DOWN) {
                 physicalDown=true; delegationRequested=false;
@@ -174,13 +196,28 @@ final class TouchGuard implements TouchInteractionController.Callback {
             } else if (action==MotionEvent.ACTION_POINTER_DOWN) {
                 policy.multiplePointers();
             } else if (action==MotionEvent.ACTION_UP) {
+                CoverService.TouchSnapshot started=physicalDown ? initial : null;
                 physicalDown=false;
-                if (!delegationRequested && !replaying && initial!=null) {
+                initial=null;
+                if (!delegationRequested && !replaying && started!=null) {
                     CoverService.TouchSnapshot current=service.touchSnapshot();
                     TouchPolicy.Decision result=policy.up(event.getX(),event.getY(),current.target);
-                    if (result==TouchPolicy.Decision.TAP && wanted && initial.samePage(current)) {
+                    if (result==TouchPolicy.Decision.TAP && wanted && started.samePage(current)) {
                         long held=Math.max(1,event.getEventTime()-downTime);
-                        replayTap(downX,downY,held>=ViewConfiguration.getLongPressTimeout());
+                        boolean longPress=held>=ViewConfiguration.getLongPressTimeout();
+                        UserTap.Result clicked=UserTap.perform(service,current,downX,downY,longPress);
+                        if (clicked==UserTap.Result.CLICKED) {
+                            ServiceStatus.directTaps++;
+                            ServiceStatus.tap(service,longPress ? "Pulsación larga aceptada por el control tocado."
+                                : "Pulsación simple aceptada por el control tocado.");
+                        } else if (clicked==UserTap.Result.FALLBACK) replayTap(downX,downY,longPress,current);
+                        else {
+                            ServiceStatus.cancelledTaps++;
+                            ServiceStatus.tap(service,"Pulsación cancelada: el control o la ventana han cambiado.");
+                        }
+                    } else if (result==TouchPolicy.Decision.TAP) {
+                        ServiceStatus.cancelledTaps++;
+                        ServiceStatus.tap(service,"Pulsación cancelada: la pantalla ya no coincide con la del inicio.");
                     }
                 }
                 if (!replaying) applyMode();
@@ -196,35 +233,72 @@ final class TouchGuard implements TouchInteractionController.Callback {
     private void delegate() {
         if (delegationRequested) return;
         delegationRequested=true;
+        initial=null;
         controller.requestDelegating();
     }
 
-    private void replayTap(float x,float y,boolean longPress) {
-        // GestureDescription rounds its samples to integer pixels. Quantize the
-        // path to the original pixel so rounding cannot miss the one-pixel
-        // passthrough region (or cross a neighbouring tab's integer boundary).
-        x=(float)Math.floor(x); y=(float)Math.floor(y);
-        // Only the exact touch the user just made is replayed. The temporary
-        // passthrough is one pixel at an allowed position, never the whole display.
+    private void replayTap(float x,float y,boolean longPress,CoverService.TouchSnapshot page) {
+        PendingReplay pending=new PendingReplay(x,y,longPress,page);
+        pendingReplay=pending;
         replaying=true;
-        Region pass=new Region(basePassthrough);
-        pass.op(new Region((int)x,(int)y,(int)x+1,(int)y+1),Region.Op.UNION);
-        service.setTouchExplorationPassthroughRegion(Display.DEFAULT_DISPLAY,pass);
-        Path path=new Path(); path.moveTo(x,y);
-        long duration=longPress ? ViewConfiguration.getLongPressTimeout()+80L : 1L;
-        GestureDescription gesture=new GestureDescription.Builder().addStroke(
-            new GestureDescription.StrokeDescription(path,0,duration)).build();
-        AccessibilityService.GestureResultCallback callback=new AccessibilityService.GestureResultCallback() {
-            @Override public void onCompleted(GestureDescription g) { finishReplay(); }
-            @Override public void onCancelled(GestureDescription g) { finishReplay(); }
-        };
-        handler.postDelayed(this::finishReplay,duration+1000);
-        if (!service.dispatchGesture(gesture,callback,handler)) finishReplay();
+        ServiceStatus.tap(service,"El control no acepta acción directa; preparando una pulsación de respaldo.");
+        pending.timeout=()->finishReplay(pending,false,"Android no cerró a tiempo la interacción para preparar el respaldo.");
+        handler.postDelayed(pending.timeout,2500);
+        prepareReplay(pending);
     }
 
-    private void finishReplay() {
-        if (!replaying) return;
+    private void prepareReplay(PendingReplay pending) {
+        if (pendingReplay!=pending || pending.prepared || pending.dispatched || physicalDown
+                || controller.getState()!=TouchInteractionController.STATE_CLEAR) return;
+        // TouchExplorer can keep the physical interaction open after ACTION_UP.
+        // A new DOWN in that state does not consult the passthrough region.
+        if (!wanted || !pending.page.samePage(service.touchSnapshot())) {
+            finishReplay(pending,false,"Respaldo cancelado: la pantalla ha cambiado."); return;
+        }
+        pending.prepared=true;
+        Region pass=new Region(basePassthrough);
+        pass.op(new Region((int)pending.x,(int)pending.y,(int)pending.x+1,(int)pending.y+1),Region.Op.UNION);
+        service.setTouchExplorationPassthroughRegion(Display.DEFAULT_DISPLAY,pass);
+        // Give the system's asynchronous region update a turn before injection.
+        handler.postDelayed(()->dispatchReplay(pending),32);
+    }
+
+    private void dispatchReplay(PendingReplay pending) {
+        if (closed || pendingReplay!=pending) return;
+        try {
+            handler.removeCallbacks(pending.timeout);
+            if (physicalDown || controller.getState()!=TouchInteractionController.STATE_CLEAR
+                    || !wanted || !pending.page.samePage(service.touchSnapshot())) {
+                finishReplay(pending,false,"Respaldo cancelado antes de transmitir: ha cambiado la interacción."); return;
+            }
+            pending.dispatched=true;
+            Path path=new Path(); path.moveTo(pending.x,pending.y);
+            long duration=pending.longPress ? ViewConfiguration.getLongPressTimeout()+80L : ViewConfiguration.getTapTimeout();
+            GestureDescription gesture=new GestureDescription.Builder().addStroke(
+                new GestureDescription.StrokeDescription(path,0,duration)).build();
+            AccessibilityService.GestureResultCallback callback=new AccessibilityService.GestureResultCallback() {
+                @Override public void onCompleted(GestureDescription g) { finishReplay(pending,true,"Gesto de pulsación de respaldo completado."); }
+                @Override public void onCancelled(GestureDescription g) { finishReplay(pending,false,"Android canceló el gesto de respaldo."); }
+            };
+            ServiceStatus.replayTaps++;
+            if (!service.dispatchGesture(gesture,callback,handler)) {
+                finishReplay(pending,false,"Android rechazó la solicitud del gesto de respaldo.");
+            } else {
+                // Waiting for the physical stream to close must not consume the
+                // injection's own timeout, especially for long presses.
+                pending.timeout=()->finishReplay(pending,false,"No llegó la confirmación del gesto de respaldo.");
+                handler.postDelayed(pending.timeout,duration+2000);
+            }
+        } catch (RuntimeException failure) { failed(failure); }
+    }
+
+    private void finishReplay(PendingReplay pending,boolean completed,String result) {
+        // Late callbacks from a previous gesture must never finish a newer one.
+        if (pendingReplay!=pending) return;
+        pendingReplay=null;
         replaying=false;
+        if (completed) ServiceStatus.completedReplays++; else ServiceStatus.cancelledTaps++;
+        ServiceStatus.tap(service,result);
         handler.removeCallbacksAndMessages(null);
         try {
             service.setTouchExplorationPassthroughRegion(Display.DEFAULT_DISPLAY,basePassthrough);
@@ -236,9 +310,11 @@ final class TouchGuard implements TouchInteractionController.Callback {
     @Override public void onStateChanged(int state) {
         if (state==TouchInteractionController.STATE_CLEAR) {
             physicalDown=false; delegationRequested=false;
-            if (!replaying) {
-                try { applyMode(); } catch (RuntimeException failure) { failed(failure); }
-            }
+            initial=null; policy.cancel();
+            try {
+                if (pendingReplay!=null) prepareReplay(pendingReplay);
+                else if (!replaying) applyMode();
+            } catch (RuntimeException failure) { failed(failure); }
         }
     }
 
@@ -252,6 +328,7 @@ final class TouchGuard implements TouchInteractionController.Callback {
     void close() {
         if (closed) return;
         closed=true; wanted=false; active=false;
+        pendingReplay=null; replaying=false;
         handler.removeCallbacksAndMessages(null);
         try {
             AccessibilityServiceInfo info=service.getServiceInfo();

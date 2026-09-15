@@ -92,6 +92,17 @@ public final class FixtureActivity extends Activity {
                 stats.edit().putInt(key,stats.getInt(key,0)+1).apply();
                 state.setText("Pulsada: "+labels[tab]);
             });
+            item.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                @Override public boolean performAccessibilityAction(View host,int action,Bundle args) {
+                    if (action==android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) {
+                        count("direct_attempts_"+tab);
+                        // Calls deliberately rejects ACTION_CLICK so the production
+                        // APK must use its native-gesture fallback for that tab.
+                        if (tab==3) return false;
+                    }
+                    return super.performAccessibilityAction(host,action,args);
+                }
+            });
             bar.addView(item,new LinearLayout.LayoutParams(0,80,1));
             remember(item,"tab_"+tab+"_center");
         }

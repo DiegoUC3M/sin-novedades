@@ -13,6 +13,7 @@ final class ServiceStatus {
     static long lastInspection;
     static long whatsappEvents;
     static long blockedTaps,blockedSwipes,touchEvents;
+    static long directTaps,replayTaps,completedReplays,cancelledTaps;
     static boolean touchReconnect;
     static String touch="El bloqueo de deslizamientos requiere Android 13 o posterior.";
     static String touchDetails="Todavía no se han comprobado las capacidades táctiles.";
@@ -22,6 +23,11 @@ final class ServiceStatus {
     private static String previousTouch="";
     private static String previousNavigation="";
     private static long lastNavigationWrite;
+
+    static void tap(Context context,String result) {
+        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+            .putString("tap_result",result).putLong("tap_time",System.currentTimeMillis()).apply();
+    }
 
     static void touch(Context context,String status,boolean inWhatsApp) {
         touch=status;

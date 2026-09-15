@@ -31,7 +31,9 @@ public final class TouchPolicy {
         move(x,y);
         if (contains(currentTarget,startX,startY) || contains(currentTarget,x,y)) decision=Decision.BLOCK;
         else if (decision==Decision.WAIT) decision=moved ? Decision.BLOCK : Decision.TAP;
-        return decision;
+        Decision result=decision;
+        decision=Decision.BLOCK;
+        return result;
     }
 
     public Decision multiplePointers() {

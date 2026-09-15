@@ -51,6 +51,9 @@ public final class TouchPolicyTest {
         check(p.move(259,350),BLOCK,"slow swipe is measured from original down");
         p.down(250,350,true,target);
         check(p.up(400,350,target),BLOCK,"fast swipe without move callback cannot become a tap");
+        p.down(50,750,true,target);
+        check(p.up(50,750,target),TAP,"one release permits exactly one tap");
+        check(p.up(50,750,target),BLOCK,"a late duplicate release cannot click again");
         System.out.println("TouchPolicy: "+checks+" checks passed");
     }
 }
