@@ -28,10 +28,34 @@ public final class TabDetector {
     public static final class Tab {
         public final String kind;
         public final Box hit, bar;
-        public final boolean tabHint;
+        public final boolean tabHint, selected;
         public Tab(String kind, Box hit, Box bar, boolean hint) {
-            this.kind=kind; this.hit=hit; this.bar=bar; this.tabHint=hint;
+            this(kind,hit,bar,hint,false);
         }
+        public Tab(String kind, Box hit, Box bar, boolean hint, boolean selected) {
+            this.kind=kind; this.hit=hit; this.bar=bar; this.tabHint=hint; this.selected=selected;
+        }
+    }
+
+    public static final class Navigation {
+        public final Box target, content;
+        // Empty means unavailable or contradictory; accessibility focus is not selection.
+        public final String selected;
+        Navigation(Box target, Box content, String selected) {
+            this.target=target; this.content=content; this.selected=selected;
+        }
+        public boolean updatesOpen() { return "updates".equals(selected); }
+    }
+
+    public static boolean selectedDescription(CharSequence value) {
+        if (value==null || value.length()>120) return false;
+        String s=Normalizer.normalize(value,Normalizer.Form.NFD)
+            .replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT).trim().replaceAll("\\s+"," ");
+        if (s.equals("selected") || s.equals("seleccionado") || s.equals("seleccionada")) return true;
+        // Read selection metadata only on a recognised tab, never arbitrary content.
+        if (label(value).isEmpty()) return false;
+        if (s.matches(".*\\b(?:not selected|no seleccionad[oa])\\b.*")) return false;
+        return s.matches(".*\\b(?:selected|seleccionad[oa])\\b.*");
     }
 
     public static String label(CharSequence value) {
@@ -58,6 +82,11 @@ public final class TabDetector {
     }
 
     public static Box detect(List<Tab> input, Box screen, float density, boolean editorVisible) {
+        Navigation nav=navigation(input,screen,density,editorVisible);
+        return nav==null ? null : nav.target;
+    }
+
+    public static Navigation navigation(List<Tab> input, Box screen, float density, boolean editorVisible) {
         if (editorVisible || screen.width()<160*density || screen.height()<200*density) return null;
         List<Tab> tabs=new ArrayList<>();
         for (Tab t:input) {
@@ -76,19 +105,23 @@ public final class TabDetector {
                 Tab prev=tabs.get(i);
                 if (prev.kind.equals(t.kind) && Math.abs(prev.hit.cx()-t.hit.cx())<8*density
                         && Math.abs(prev.hit.cy()-t.hit.cy())<16*density) {
-                    if (t.hit.width()>prev.hit.width() || (t.tabHint && !prev.tabHint)) tabs.set(i,t);
+                    Tab chosen=t.hit.width()>prev.hit.width() || (t.tabHint && !prev.tabHint) ? t : prev;
+                    tabs.set(i,new Tab(chosen.kind,chosen.hit,chosen.bar,chosen.tabHint,prev.selected || t.selected));
                     duplicate=true; break;
                 }
             }
             if (!duplicate) tabs.add(t);
         }
-        Box match=null;
+        Navigation match=null;
         for (Tab target:tabs) {
             if (!target.kind.equals("updates")) continue;
             boolean chats=false, corroboration=false;
             int count=0, hints=0;
             int left=target.hit.left,right=target.hit.right;
             boolean sameContainer=true;
+            int footerTop=target.bar==null ? target.hit.top : target.bar.top;
+            String selected="";
+            boolean selectionConflict=false;
             for (Tab other:tabs) {
                 if (Math.abs(other.hit.cy()-target.hit.cy())>24*density) continue;
                 boolean commonBar=target.bar!=null && target.bar.same(other.bar);
@@ -97,6 +130,11 @@ public final class TabDetector {
                 if (other!=target && other.hit.left<target.hit.right && other.hit.right>target.hit.left) continue;
                 sameContainer&=commonBar;
                 count++;
+                footerTop=Math.min(footerTop,other.bar==null ? other.hit.top : other.bar.top);
+                if (other.selected) {
+                    if (!selected.isEmpty() && !selected.equals(other.kind)) selectionConflict=true;
+                    selected=other.kind;
+                }
                 if (other.tabHint) hints++;
                 left=Math.min(left,other.hit.left); right=Math.max(right,other.hit.right);
                 if (other.kind.equals("chats")) chats=true;
@@ -119,8 +157,10 @@ public final class TabDetector {
             if (r-l>screen.width()*0.48 || r-l<24*density) continue;
             Box result=new Box(l,target.hit.top,r,target.hit.bottom);
             // Ambiguity must never produce a screen-wide or arbitrary cover.
-            if (match!=null && !match.same(result)) return null;
-            match=result;
+            if (match!=null && !match.target.same(result)) return null;
+            Box content=new Box(screen.left,screen.top,screen.right,footerTop);
+            if (content.height()<=0 || !screen.contains(content)) return null;
+            match=new Navigation(result,content,selectionConflict ? "" : selected);
         }
         return match;
     }

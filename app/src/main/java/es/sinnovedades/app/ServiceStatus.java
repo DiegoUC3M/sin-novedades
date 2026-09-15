@@ -12,32 +12,21 @@ final class ServiceStatus {
     static boolean connected;
     static long lastInspection;
     static long whatsappEvents;
-    static long blockedTaps,blockedSwipes,touchEvents;
-    static long directTaps,replayTaps,completedReplays,cancelledTaps;
-    static boolean touchReconnect;
-    static String touch="El bloqueo de deslizamientos requiere Android 13 o posterior.";
-    static String touchDetails="Todavía no se han comprobado las capacidades táctiles.";
+    static long curtainsShown;
     static String current="El servicio aún no se ha conectado.";
     private static String previousReport="";
     private static long lastWrite;
-    private static String previousTouch="";
     private static String previousNavigation="";
     private static long lastNavigationWrite;
 
-    static void tap(Context context,String result) {
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
-            .putString("tap_result",result).putLong("tap_time",System.currentTimeMillis()).apply();
-    }
-
-    static void touch(Context context,String status,boolean inWhatsApp) {
-        touch=status;
-        if (!inWhatsApp) return;
-        String report=status+"\n"+touchDetails;
-        if (report.equals(previousTouch)) return;
-        previousTouch=report;
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
-            .putString("touch_report",report).putString("touch_summary",status)
-            .putLong("touch_time",System.currentTimeMillis()).apply();
+    static void prepare(Context context) {
+        SharedPreferences saved=saved(context);
+        String version="0.4.0";
+        if (!version.equals(saved.getString("version",""))) {
+            // Old touch-controller reports must not appear to describe this version.
+            saved.edit().clear().putString("version",version).apply();
+            previousReport=""; previousNavigation=""; lastWrite=0; lastNavigationWrite=0;
+        }
     }
 
     static void checked(String status) {

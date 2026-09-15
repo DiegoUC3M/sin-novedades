@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Sin Novedades</string>
-    <string name="service_summary">Cubre Novedades y bloquea toques y deslizamientos entre pestañas.</string>
-    <string name="service_description">Detecta la barra inferior de WhatsApp y cubre Novedades. En Android 13 o posterior puede comprobar los toques antes de transmitirlos y bloquear los deslizamientos horizontales en la pantalla de navegación. Solo transmite tus propios toques permitidos; no cambia de pestaña por su cuenta. Android concede acceso al contenido visible y al control táctil. Todo se procesa en el dispositivo: no guarda mensajes ni envía datos. Puedes desactivarla cuando quieras.</string>
+    <string name="service_summary">Oculta el botón Novedades y tapa su contenido cuando está seleccionada.</string>
+    <string name="service_description">Reconoce la barra inferior de WhatsApp, cubre el botón Novedades y pone una pantalla negra sobre su contenido cuando detecta esa pestaña seleccionada. Las otras pestañas quedan accesibles para salir. No filtra ni reenvía los gestos de WhatsApp y no cambia de pestaña automáticamente. Accesibilidad permite consultar la interfaz visible para colocar las cubiertas. Todo se procesa en el dispositivo: no guarda mensajes ni envía datos. Puedes desactivarla cuando quieras.</string>
 </resources>

@@ -12,6 +12,7 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.WindowInsets;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -26,6 +27,9 @@ public final class FixtureActivity extends Activity {
     private int events;
     private long muteUntil;
     private boolean navigation;
+    private final TextView[] tabs=new TextView[4];
+    private final String[] labels={"Chats","Novedades","Comunidades","Llamadas"};
+    private int selectedTab;
     private final Runnable storm=new Runnable() {
         public void run() { state.setText("Evento de prueba "+(++events)); handler.postDelayed(this,15); }
     };
@@ -81,23 +85,31 @@ public final class FixtureActivity extends Activity {
         bar.setOrientation(LinearLayout.HORIZONTAL);
         // Old versions that omit INCLUDE_NOT_IMPORTANT_VIEWS lose this container.
         bar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        String[] labels={"Chats","Novedades","Comunidades","Llamadas"};
         for (int index=0;index<labels.length;index++) {
             final int tab=index;
             TextView item=new TextView(this); item.setText(labels[index]); item.setTextSize(14);
+            tabs[index]=item;
             item.setTextColor(0xff111111); item.setGravity(Gravity.CENTER);
             item.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
             item.setOnClickListener(v->{
                 String key="taps_"+tab;
                 stats.edit().putInt(key,stats.getInt(key,0)+1).apply();
-                state.setText("Pulsada: "+labels[tab]);
+                selectTab(tab);
             });
             item.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                @Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfo info) {
+                    super.onInitializeAccessibilityNodeInfo(host,info);
+                    String mode=getIntent().getStringExtra("selection");
+                    if (mode==null) return;
+                    info.setSelected(false);
+                    if (mode.equals("checked")) { info.setCheckable(true); info.setChecked(tab==selectedTab); }
+                    if (mode.equals("description")) info.setStateDescription(tab==selectedTab ? "Seleccionada" : "No seleccionada");
+                }
                 @Override public boolean performAccessibilityAction(View host,int action,Bundle args) {
                     if (action==android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) {
                         count("direct_attempts_"+tab);
-                        // Calls deliberately rejects ACTION_CLICK so the production
-                        // APK must use its native-gesture fallback for that tab.
+                        // A normal native click must still work when ACTION_CLICK
+                        // is rejected. The cover service must never invoke it.
                         if (tab==3) return false;
                     }
                     return super.performAccessibilityAction(host,action,args);
@@ -107,7 +119,19 @@ public final class FixtureActivity extends Activity {
             remember(item,"tab_"+tab+"_center");
         }
         root.addView(bar,new LinearLayout.LayoutParams(-1,80));
+        selectTab(getIntent().getIntExtra("tab",0));
         if (getIntent().getBooleanExtra("storm",false)) handler.post(storm);
+    }
+
+    private void selectTab(int tab) {
+        selectedTab=Math.max(0,Math.min(3,tab));
+        for (int i=0;i<tabs.length;i++) {
+            tabs[i].setSelected(i==selectedTab);
+            tabs[i].setBackgroundColor(i==selectedTab ? 0xffc6f0da : 0xffffffff);
+        }
+        state.setText("Contenido de prueba: "+labels[selectedTab]);
+        stats.edit().putInt("selected_tab",selectedTab).apply();
+        tabs[selectedTab].sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_SELECTED);
     }
 
     private void showChat() {
@@ -144,7 +168,10 @@ public final class FixtureActivity extends Activity {
         }
         @Override public boolean onTouchEvent(MotionEvent e) {
             if (e.getActionMasked()==MotionEvent.ACTION_UP) {
-                if (horizontal) count("horizontal_swipes");
+                if (horizontal) {
+                    count("horizontal_swipes");
+                    selectTab(selectedTab+(e.getX()<startX ? 1 : -1));
+                }
                 if (vertical) count("vertical_scrolls");
             }
             return true;

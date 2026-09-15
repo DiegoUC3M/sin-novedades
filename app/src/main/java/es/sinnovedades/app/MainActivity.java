@@ -42,6 +42,7 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         prefs=getSharedPreferences(CoverService.PREFS,MODE_PRIVATE);
+        ServiceStatus.prepare(this);
         boolean dark=(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
         foreground=Color.parseColor(dark?"#EFF6F3":"#132B25");
         muted=Color.parseColor(dark?"#B7C9C2":"#52685F");
@@ -65,7 +66,7 @@ public final class MainActivity extends Activity {
         badge.setLetterSpacing(0.1f); layout.addView(badge);
         TextView title=text("Sin Novedades",32,foreground);
         title.setTypeface(null,Typeface.BOLD); margin(layout,title,12);
-        margin(layout,text("Oculta Novedades y bloquea el acceso desde la barra.",18,muted),8);
+        margin(layout,text("Novedades oculta. WhatsApp con sus gestos normales.",18,muted),8);
 
         status=text("",16,foreground);
         status.setPadding(dp(18),dp(16),dp(18),dp(16));
@@ -74,21 +75,13 @@ public final class MainActivity extends Activity {
         status.setBackground(card); margin(layout,status,26);
 
         Switch enabled=new Switch(this);
-        enabled.setText("Cubrir y bloquear el botón"); enabled.setTextSize(16); enabled.setTextColor(foreground);
+        enabled.setText("Ocultar Novedades"); enabled.setTextSize(16); enabled.setTextColor(foreground);
         enabled.setMinHeight(dp(60)); enabled.setChecked(prefs.getBoolean("enabled",true));
         enabled.setOnCheckedChangeListener((v,value)->{ prefs.edit().putBoolean("enabled",value).apply(); refresh(); });
         margin(layout,enabled,16);
-        margin(layout,text("La cubierta aparece únicamente cuando se reconoce la barra inferior de WhatsApp. No cambia de pestaña automáticamente.",14,muted),2);
+        margin(layout,text("Tapa el botón y, si entras en Novedades, oculta su contenido con una pantalla negra. Para salir, pulsa Chats, Comunidades o Llamadas en la barra inferior.",14,muted),2);
 
-        Switch gestures=new Switch(this);
-        gestures.setText("Protección táctil reforzada"); gestures.setTextSize(16); gestures.setTextColor(foreground);
-        gestures.setMinHeight(dp(60)); gestures.setChecked(prefs.getBoolean("gestures",true));
-        gestures.setEnabled(Build.VERSION.SDK_INT>=33);
-        gestures.setOnCheckedChangeListener((v,value)->{ prefs.edit().putBoolean("gestures",value).apply(); refresh(); });
-        margin(layout,gestures,12);
-        margin(layout,text(Build.VERSION.SDK_INT>=33
-            ? "Comprueba el botón antes de aceptar el toque, también al volver de un chat. Bloquea los deslizamientos horizontales en la pantalla con la barra: cambia de sección pulsando las otras pestañas."
-            : "El bloqueo de deslizamientos necesita Android 13 o posterior. En este móvil se mantiene la cubierta del botón.",14,muted),2);
+        margin(layout,text("Los toques y deslizamientos los recibe WhatsApp directamente. La app ya no utiliza el filtro táctil de las versiones anteriores.",14,muted),10);
 
         permission=button("Activar accesibilidad",v->openPermission()); margin(layout,permission,24);
         margin(layout,button("Abrir WhatsApp",v->openWhatsApp()),8);
@@ -99,7 +92,7 @@ public final class MainActivity extends Activity {
         margin(layout,button("Copiar diagnóstico",v->copyDiagnostics()),8);
         margin(layout,text("Si no funciona: abre WhatsApp con la barra inferior visible, vuelve aquí y copia el diagnóstico. No incluye mensajes ni capturas.",14,muted),6);
 
-        TextView appearance=text("Aspecto de la cubierta",18,foreground);
+        TextView appearance=text("Color de la cubierta del botón",18,foreground);
         appearance.setTypeface(null,Typeface.BOLD); margin(layout,appearance,30);
         colorLabel=text("",14,muted); margin(layout,colorLabel,8);
         margin(layout,button("Elegir color",v->chooseColor()),8);
@@ -107,9 +100,9 @@ public final class MainActivity extends Activity {
 
         TextView privacy=text("Privacidad",18,foreground);
         privacy.setTypeface(null,Typeface.BOLD); margin(layout,privacy,28);
-        margin(layout,text("Accesibilidad permite buscar la barra y filtrar los gestos en WhatsApp. La protección táctil ejecuta tus pulsaciones permitidas sobre el control que has tocado. No navega por su cuenta, no guarda mensajes y no tiene permiso de Internet.",14,muted),8);
+        margin(layout,text("Accesibilidad permite reconocer la barra y la pestaña seleccionada para colocar las cubiertas. No cambia de pestaña por su cuenta, no guarda mensajes y no tiene permiso de Internet.",14,muted),8);
         margin(layout,button("Ayuda de instalación",v->help()),16);
-        margin(layout,text("Versión 0.3.2 · Cubierta: Android 8+ · Protección táctil: Android 13+\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
+        margin(layout,text("Versión 0.4.0 · Android 8+\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
         refresh();
     }
 
@@ -132,15 +125,13 @@ public final class MainActivity extends Activity {
         boolean granted=serviceEnabled(),on=prefs.getBoolean("enabled",true);
         setText(status,!on ? "Protección en pausa" : !granted ? "Falta activar el permiso de accesibilidad"
             : !ServiceStatus.connected ? "Permiso concedido. Esperando a que Android conecte el servicio."
-            : "Servicio conectado.\n"+ServiceStatus.touch);
-        setText(permission,granted && ServiceStatus.touchReconnect ? "Volver a conectar accesibilidad"
-            : granted ? "Gestionar accesibilidad" : "Activar accesibilidad");
+            : "Servicio conectado. Cubierta visual activada.");
+        setText(permission,granted ? "Gestionar accesibilidad" : "Activar accesibilidad");
         SharedPreferences saved=ServiceStatus.saved(this);
         long when=saved.getLong("time",0);
         setText(lastResult,when==0 ? "Todavía no se ha detectado una ventana de WhatsApp."
             : saved.getString("summary","")+"\n"+android.text.format.DateFormat.getDateFormat(this).format(new java.util.Date(when))
-                +" · "+android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(when))
-                +"\n"+saved.getString("touch_summary",""));
+                +" · "+android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(when)));
         String c=prefs.getString("color","auto");
         setText(colorLabel,c.equals("auto")?"Según el tema del móvil":c.equals("light")?"Fondo claro":c.equals("dark")?"Fondo oscuro":"Color personalizado: "+c);
     }
@@ -162,21 +153,11 @@ public final class MainActivity extends Activity {
             +"\nModelo: "+Build.MANUFACTURER+" "+Build.MODEL
             +"\nWhatsApp: "+version("com.whatsapp")+"; Business: "+version("com.whatsapp.w4b")
             +"\nPermiso: "+serviceEnabled()+"; interruptor: "+prefs.getBoolean("enabled",true)
-            +"\nProtección reforzada activada: "+prefs.getBoolean("gestures",true)
             +"\nServicio conectado: "+ServiceStatus.connected+"; última inspección hace "+elapsed+" s"
             +"\nEstado actual: "+ServiceStatus.current
             +"\nEventos de WhatsApp: "+ServiceStatus.whatsappEvents
-            +"\nProtección táctil: "+ServiceStatus.touch
-            +"\n"+ServiceStatus.touchDetails
-            +"\nEventos táctiles recibidos: "+ServiceStatus.touchEvents
-            +"\nToques bloqueados: "+ServiceStatus.blockedTaps+"; deslizamientos bloqueados: "+ServiceStatus.blockedSwipes
-            +"\nPulsaciones directas aceptadas: "+ServiceStatus.directTaps
-            +"; gestos de respaldo solicitados: "+ServiceStatus.replayTaps+"; completados: "+ServiceStatus.completedReplays
-            +"; pulsaciones canceladas: "+ServiceStatus.cancelledTaps
-            +"\nÚltima pulsación (fecha): "+saved.getLong("tap_time",0)
-            +"\n"+saved.getString("tap_result","Todavía no hay una pulsación permitida comprobada.")
-            +"\nÚltimo estado táctil en WhatsApp (fecha): "+saved.getLong("touch_time",0)
-            +"\n"+saved.getString("touch_report","Todavía no hay una comprobación táctil en WhatsApp.")
+            +"\nFiltro táctil global: eliminado; sin interceptar ni reenviar gestos."
+            +"\nPantallas negras mostradas: "+ServiceStatus.curtainsShown
             +"\nÚltima comprobación de WhatsApp (fecha): "+saved.getLong("time",0)
             +"\n"+saved.getString("report","Todavía no hay ninguna comprobación de WhatsApp.")
             +"\nÚltima barra inferior reconocida (fecha): "+saved.getLong("navigation_time",0)
@@ -188,15 +169,9 @@ public final class MainActivity extends Activity {
 
     private void openPermission() {
         Runnable open=()->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-        if (serviceEnabled() && ServiceStatus.touchReconnect) {
-            new AlertDialog.Builder(this).setTitle("Volver a conectar Sin Novedades")
-                .setMessage("En Accesibilidad, abre Sin Novedades, desactiva su servicio y vuelve a activarlo. Así Android puede cargar los permisos que necesita esta versión.\n\nHazlo en los ajustes de Android; apagar el interruptor de esta app no vuelve a conectar el servicio.")
-                .setNegativeButton("Cerrar",null).setPositiveButton("Abrir accesibilidad",(d,w)->open.run()).show();
-            return;
-        }
         if (serviceEnabled() || prefs.getBoolean("disclosure",false)) { open.run(); return; }
         new AlertDialog.Builder(this).setTitle("Activar Sin Novedades")
-            .setMessage("Android pedirá acceso al contenido de la pantalla y al control táctil. Sin Novedades lo utiliza para cubrir el botón y bloquear los deslizamientos entre pestañas. Solo ejecuta las pulsaciones que tú haces sobre controles permitidos. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
+            .setMessage("Android pedirá acceso al contenido de la pantalla. Sin Novedades lo utiliza para reconocer las pestañas de WhatsApp, tapar el botón Novedades y ocultar su contenido cuando esté seleccionada. Las otras pestañas quedan libres para salir. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
             .setNegativeButton("Ahora no",null).setPositiveButton("Continuar",(d,w)->{
                 prefs.edit().putBoolean("disclosure",true).apply(); open.run();
             }).show();
@@ -234,7 +209,7 @@ public final class MainActivity extends Activity {
 
     private void help() {
         new AlertDialog.Builder(this).setTitle("Cómo activarlo")
-            .setMessage("1. Activa Sin Novedades en Ajustes > Accesibilidad > Aplicaciones o servicios instalados.\n\n2. Si Android muestra Ajustes restringidos, abre Ajustes > Aplicaciones > Sin Novedades > menú ⋮ > Permitir ajustes restringidos. Después vuelve a Accesibilidad.\n\n3. Si has actualizado desde una versión anterior y faltan permisos táctiles, desactiva y vuelve a activar el servicio Sin Novedades en Accesibilidad. El interruptor de esta app solo pausa la protección.\n\n4. Abre WhatsApp en la pestaña Chats y prueba un deslizamiento horizontal. Vuelve aquí: la última comprobación debe indicar si se reciben gestos o qué impide activar el control táctil.\n\nSi otro servicio solicita exploración táctil, se mostrará su nombre. No basta con que otra app tenga permiso de accesibilidad para que haya conflicto.\n\nSi sigue fallando, abre WhatsApp con la barra inferior visible, vuelve aquí y pulsa Copiar diagnóstico.\n\nReconoce etiquetas en español e inglés. No bloquea enlaces directos a estados o canales ni accesos mediante otros servicios de accesibilidad.\n\nPuedes pausar la protección con el interruptor o desactivar el servicio en Ajustes.")
+            .setMessage("1. Activa Sin Novedades en Ajustes > Accesibilidad > Aplicaciones o servicios instalados.\n\n2. Si Android muestra Ajustes restringidos, abre Ajustes > Aplicaciones > Sin Novedades > menú ⋮ > Permitir ajustes restringidos. Después vuelve a Accesibilidad.\n\n3. Abre WhatsApp. El botón Novedades queda cubierto. Si llegas a esa pestaña deslizando o antes de aparecer la cubierta, su contenido se tapa en negro cuando se detecta la selección. Pulsa otra pestaña de la barra inferior para salir.\n\nLa detección es reactiva: puede verse brevemente el contenido antes de que Android avise. Si WhatsApp no expone la pestaña seleccionada, la pantalla negra no puede activarse; el diagnóstico indica ese caso.\n\nSi sigue fallando, entra en Novedades, vuelve aquí y pulsa Copiar diagnóstico.\n\nReconoce etiquetas en español e inglés. No cubre enlaces directos a estados o canales sin la barra inferior.\n\nPuedes pausar la protección con el interruptor o desactivar el servicio en Ajustes.")
             .setPositiveButton("Entendido",null).show();
     }
 

@@ -1,107 +1,53 @@
 # Sin Novedades
 
-App personal de Android que **tapa el botón Novedades de WhatsApp e impide pulsarlo** mediante una cubierta opaca. No requiere root ni modificar la APK de WhatsApp.
+App personal para Android que tapa el botón **Novedades** de WhatsApp y oculta su contenido cuando detecta esa pestaña seleccionada. No requiere root ni modificar WhatsApp.
 
 ## Descargar e instalar
 
-La APK firmada está en [`dist/sin-novedades-0.3.2.apk`](dist/sin-novedades-0.3.2.apk). Abre ese archivo y usa **Download raw file**.
+Descarga la [APK firmada 0.4.0](https://github.com/DiegoUC3M/sin-novedades/raw/refs/heads/main/dist/sin-novedades-0.4.0.apk).
 
-**Instala esta APK encima de la versión anterior, incluida la 0.3.1.** Mantiene el identificador y la firma. No es necesario desinstalar la versión anterior. La protección táctil requiere Android 13 o posterior y está activada por defecto.
+**Instálala encima de la versión anterior.** Conserva el identificador y la firma; no hace falta desinstalar. La 0.4.0 elimina el filtro táctil de la serie 0.3.x y su interruptor. Al conectarse, también restablece las opciones dinámicas del servicio para retirar la solicitud antigua de exploración táctil.
 
-1. Descarga e instala la APK. Android puede pedirte autorizar instalaciones desde la app con la que la abras.
-2. Abre **Sin Novedades** y pulsa **Activar accesibilidad**.
-3. En **Ajustes → Accesibilidad → Aplicaciones o servicios instalados**, activa **Sin Novedades**.
-4. Si Android muestra **Ajustes restringidos**, ve a **Ajustes → Aplicaciones → Sin Novedades → ⋮ → Permitir ajustes restringidos**, y vuelve al paso 3. La ubicación puede variar en Samsung.
-5. Abre WhatsApp en Chats. El botón Novedades debería quedar cubierto y no responder a los toques.
-6. Si se distingue el rectángulo, entra en **Elegir color** y ajusta el fondo a tu tema de WhatsApp. También admite un color hexadecimal personalizado.
+Para una instalación nueva:
 
-En Android 13+, deja activada **Protección táctil reforzada**. Para cambiar de sección, pulsa Chats, Comunidades o Llamadas: los deslizamientos horizontales se bloquean en la pantalla con la barra. Dentro de un chat, los gestos conservan su manejo habitual. Si Android no conecta las nuevas capacidades tras la actualización, desactiva y vuelve a activar el servicio de Sin Novedades en Accesibilidad.
+1. Instala la APK y abre **Sin Novedades**.
+2. Pulsa **Activar accesibilidad** y activa el servicio en Ajustes → Accesibilidad → Aplicaciones o servicios instalados.
+3. Si Android muestra **Ajustes restringidos**, permite los ajustes restringidos desde Ajustes → Aplicaciones → Sin Novedades → ⋮ y vuelve a Accesibilidad. La ubicación varía según el móvil.
+4. Abre WhatsApp. El botón Novedades queda cubierto al reconocerse la barra inferior.
+5. Si llegas a Novedades deslizando o pulsando antes de que aparezca la cubierta, su contenido se tapa en negro al detectarse la selección. **Pulsa otra pestaña de la barra inferior para salir.**
 
-Para desactivarla, apaga **Cubrir y bloquear el botón**, desactiva su servicio en Accesibilidad o desinstala la app.
+El interruptor **Ocultar Novedades** pausa ambas cubiertas. **Elegir color** cambia solo la cubierta pequeña del botón para igualarla al fondo de WhatsApp; la pantalla de contenido permanece negra.
 
-## Si tiene permiso pero no aparece la cubierta
+## Cambio de la 0.4.0
 
-Abre WhatsApp con la barra inferior visible durante unos segundos. Vuelve a Sin Novedades y consulta **Última comprobación en WhatsApp**. Pulsa **Copiar diagnóstico** y pega el resultado en la conversación para investigar el caso concreto.
+Las versiones anteriores intentaban impedir la entrada a Novedades interceptando los gestos. En el móvil del usuario, ese método alteraba las pulsaciones e introducía retardo. Esta versión elimina ese controlador, las pulsaciones por accesibilidad y los gestos sintéticos.
 
-La versión 0.2.0 distingue entre permiso concedido y servicio conectado. El resultado de WhatsApp se conserva cuando vuelves a la app, de modo que puede indicar si falta la barra, está visible el editor o el teclado, hay otra cubierta activa o Android rechazó la ventana. El diagnóstico contiene únicamente datos técnicos, tipos de pestaña reconocidos y coordenadas; no mensajes, nombres de contactos, descripciones originales ni capturas.
+- WhatsApp recibe directamente los toques, pulsaciones largas y deslizamientos fuera de los dos rectángulos cubiertos. No hay una inspección de pantalla que deba terminar para entregar cada toque.
+- Se conserva la cubierta del botón Novedades usando sus límites reales.
+- Una segunda ventana negra cubre todo el contenido por encima de la barra cuando Novedades aparece seleccionada. Absorbe los toques en el contenido oculto y deja libres las otras pestañas y la navegación del sistema.
+- La selección se obtiene de los estados `selected`, `checked`, del elemento de colección o de metadatos explícitos de selección en español/inglés. El foco de accesibilidad no se interpreta como selección.
+- Se comprueba que las etiquetas pertenecen a una barra válida con Chats, Novedades y otra pestaña. Las selecciones contradictorias o desconocidas no activan la pantalla negra.
+- La inspección responde a eventos de selección, clic, contenido y ventana. Los eventos continuos se agrupan con un intervalo mínimo de 80 ms; el reintento en WhatsApp pasa de 180 a 1000 ms. Android 13+ vuelve a utilizar la caché, con una renovación periódica.
+- La pantalla negra se retira al seleccionar otra pestaña. Ambas cubiertas se retiran al entrar en un chat con editor, aparecer el teclado, salir de WhatsApp o bloquear el móvil. No se cambia de pestaña automáticamente.
+- El diagnóstico conserva las etiquetas canónicas, límites y estados de selección. Los informes del controlador antiguo se descartan al actualizar.
 
-### Si no bloquea los deslizamientos o los toques rápidos
+## Alcance
 
-La 0.3.0 podía mostrar **Protección táctil no disponible** tanto por capacidades ausentes como por otro servicio que solicitara exploración táctil. Además, reemplazaba ese aviso por **en espera** al salir de WhatsApp. El diagnóstico recibido del Samsung confirma que el controlador no se activó, pero no permite distinguir esas dos causas.
+- Android 8.0 o posterior; compilada con SDK 36 y orientada a Android 16.
+- Reconoce etiquetas en español e inglés. Admite WhatsApp e intenta reconocer la barra de WhatsApp Business.
+- **La pantalla negra es reactiva:** el contenido puede verse brevemente antes de que Android notifique el cambio. No garantiza ocultarlo desde el primer fotograma ni impedir la pulsación inicial antes de colocar la cubierta pequeña.
+- Si WhatsApp no expone qué pestaña está seleccionada, solo se cubre el botón. La última comprobación indica expresamente ese caso.
+- No cubre accesos directos a estados o canales que no muestren una barra inferior reconocible, ni cambia la interfaz interna de WhatsApp.
+- No está diseñada como un bloqueo inviolable. No actúa sobre barras laterales de tabletas ni pantallas externas.
+- Su funcionamiento en la interfaz real del Samsung SM-S938B del usuario queda pendiente de comprobar; las pruebas locales usan una pantalla sintética de Android 16.
 
-La **0.3.1** muestra el motivo concreto incluso estando en Sin Novedades:
-
-- **Android no ha habilitado…**: desactiva y vuelve a activar el servicio **Sin Novedades** en los ajustes de Accesibilidad de Android. Apagar el interruptor dentro de esta app solo pausa la protección y no vuelve a conectar el servicio.
-- **Otro servicio solicita exploración táctil: [nombre]**: identifica el servicio que provoca el conflicto. Tener AppBlock u otra app con permiso de accesibilidad no basta por sí solo para bloquear esta protección. Sin Novedades no modifica los permisos de otras apps.
-- **Control táctil solicitado; esperando el primer gesto**: la configuración se ha solicitado, pero aún no se ha recibido entrada. Abre WhatsApp con la barra visible y prueba un deslizamiento horizontal; vuelve aquí y comprueba el resultado guardado.
-
-Si sigue fallando, copia el nuevo diagnóstico. Incluye las capacidades que Android entrega al servicio, las solicitudes táctiles relevantes de otros servicios y su nombre, los eventos táctiles recibidos y el último estado táctil en WhatsApp. Conserva también la última barra reconocida aunque después entres en un chat. Estos datos se guardan solo en el móvil.
-
-Si los deslizamientos ya se bloquean pero las pulsaciones simples no funcionan, instala la **0.3.2**. Utiliza la acción del control que has tocado y conserva un gesto de respaldo para controles que no aceptan esa acción. El diagnóstico cuenta las pulsaciones directas aceptadas, los respaldos solicitados y completados y las cancelaciones con su motivo.
-
-### Cambios de la 0.2.0
-
-- Solicita también los contenedores que Android considera no importantes para accesibilidad. La versión anterior necesitaba uno de esos contenedores para reconocer la barra, pero no pedía acceso a ellos.
-- Recorre los descendientes de contenedores invisibles y reconoce botones que exponen una acción de selección o semántica de pestaña.
-- Admite una fila completa de pestañas con semántica independiente aunque el árbol accesible no exponga una barra común. Sigue exigiendo Chats, Novedades y otra pestaña, con límites válidos y sin solapamiento sobre Novedades.
-- Los eventos continuos ya no aplazan una inspección pendiente. Se reintenta mientras WhatsApp está delante, aunque todavía no se haya colocado la cubierta.
-- Muestra el resultado real de la última inspección y registra las excepciones por su tipo, sin guardar el contenido de la pantalla.
-
-### Cambios de la 0.3.0
-
-- Elimina la espera de 45 ms tras los eventos de contenido y prioriza la barra durante la inspección. El reintento mientras WhatsApp está delante pasa de 500 a 180 ms.
-- En Android 13+, mantiene un controlador táctil activo también dentro de los chats. Obtiene una instantánea nueva al apoyar el dedo, con la caché de nodos desactivada: el bloqueo ya no depende de que el rectángulo haya terminado de dibujarse.
-- Consume los gestos horizontales en la pantalla de navegación antes de enviarlos a WhatsApp. La regla utiliza el desplazamiento acumulado desde el inicio, no la velocidad de cada evento.
-- Delega los desplazamientos verticales a Android y transmite los toques permitidos en el punto que el usuario acaba de pulsar. Comprueba otra vez la pestaña y la ventana al levantar el dedo antes de transmitir un toque.
-- Conserva zonas de paso directo para los gestos del sistema y deja de pedir control táctil al salir de WhatsApp o pausar la protección.
-- Añade un interruptor independiente y contadores de toques y deslizamientos bloqueados en el diagnóstico.
-
-### Cambios de la 0.3.1
-
-- Conserva el motivo de la falta de activación y distingue capacidades ausentes, conflictos con otro servicio y configuración pendiente de recibir entrada.
-- Comprueba las dos capacidades necesarias: interceptar gestos y transmitir las pulsaciones permitidas. Evita activar la interceptación si Android aún no permite transmitir esas pulsaciones.
-- Corrige un falso conflicto: en servicios con target SDK 18+, una solicitud de exploración sin la capacidad correspondiente es ignorada por Android y ya no impide activar Sin Novedades. Para servicios antiguos se conserva la comprobación prudente porque pueden tener una autorización anterior.
-- Identifica el servicio propio usando también su componente declarado y muestra el nombre de los otros servicios que solicitan exploración táctil.
-- Guarda por separado el estado táctil y la última barra reconocida; no se pierden al entrar en un chat o copiar el diagnóstico desde esta app.
-- Explica cómo volver a conectar el servicio tras una actualización. No puede concederse por sí misma capacidades que Android no haya habilitado.
-
-### Cambios de la 0.3.2
-
-- Ejecuta la pulsación simple o larga mediante la acción del control que está bajo el dedo. Comprueba que sigue visible, habilitado, en la misma ventana y con los mismos límites antes de actuar. No utiliza el foco de accesibilidad para elegir el destino.
-- Excluye Novedades y cualquier contenedor pulsable que abarque esa pestaña. Selecciona el descendiente pulsable más concreto; si hay controles superpuestos en ramas distintas, deja la selección al método de respaldo por coordenadas.
-- El gesto de respaldo espera a que Android cierre la interacción física y comprueba de nuevo la pantalla antes de enviarse. La implementación de AOSP solo consulta la región de paso al comenzar una interacción desde el estado libre: reenviar inmediatamente al recibir `ACTION_UP` podía dejar el nuevo toque dentro de la interacción anterior.
-- Utiliza `ViewConfiguration.getTapTimeout()` para la duración del toque de respaldo; la versión anterior enviaba una pulsación de 1 ms. Conserva la región de paso de un solo píxel en el punto permitido, sin abrir el resto de la pantalla.
-- Cancela un respaldo pendiente si empieza otra interacción, se abandona WhatsApp o cambia la pantalla. Una respuesta tardía de un gesto anterior no puede finalizar uno nuevo.
-- Consume cada liberación del dedo una sola vez y descarta referencias de interacciones terminadas o delegadas, para que un evento tardío no vuelva a ejecutar una pulsación anterior.
-- Añade diagnóstico específico de pulsaciones, separado de los contadores de bloqueos.
-
-## Qué hace
-
-- Localiza una barra inferior con Chats, Novedades y otra pestaña reconocida.
-- Usa los límites reales del botón pulsable. No calcula su posición con coordenadas fijas ni amplía la cubierta sobre botones sin etiqueta.
-- Coloca una ventana de accesibilidad opaca que absorbe los toques dentro de ese rectángulo. Con la protección táctil reforzada, también filtra los gestos de la pantalla de navegación.
-- Retira la cubierta al dejar de detectar la barra, al entrar en un chat con editor, al aparecer el teclado, al cambiar de aplicación o al bloquear el móvil.
-- Permite pausar el bloqueo y cambiar el color de la cubierta.
-
-## Alcance de esta versión
-
-El usuario confirmó que la cubierta de la **0.2.0** funciona en su WhatsApp y notificó dos vías de entrada: pulsar al volver de un chat antes de aparecer el rectángulo y deslizar entre pestañas. Tras la **0.3.1**, ha confirmado que se bloquean los deslizamientos, pero fallan las pulsaciones simples permitidas. La **0.3.2** cambia cómo se ejecutan esas pulsaciones y corrige el momento y la duración del respaldo. **Su funcionamiento en el Samsung del usuario sigue pendiente de comprobar.**
-
-- Android 8.0 o posterior para la cubierta; Android 13 o posterior para el controlador táctil. Compilada con SDK 36 y orientada a Android 16.
-- Reconoce etiquetas en español e inglés. Se admite WhatsApp y se intenta reconocer la barra de WhatsApp Business.
-- Cubre el botón: no borra la pestaña, no reorganiza la barra y no vuelve a Chats automáticamente.
-- No impide entrar mediante enlaces directos, otros servicios de accesibilidad u otros accesos que WhatsApp pueda incorporar.
-- La cubierta visual sigue siendo reactiva. En Android 13+, la protección táctil comprueba la ventana al comenzar y terminar un toque para evitar depender de esa demora de dibujo. El inicio del servicio, la primera entrada desde otra app y una interfaz que aún no exponga su navegación a accesibilidad siguen dependiendo de los avisos de Android; no es un bloqueo inviolable.
-- En la pantalla con la barra, la protección reforzada bloquea los deslizamientos horizontales y el multitáctil. Las pulsaciones simples y largas se ejecutan al levantar el dedo. Los controles que necesitan el gesto de respaldo tienen una espera adicional hasta que Android cierra la interacción física. El desplazamiento vertical empieza al superar el umbral táctil. Si estos cambios de interacción no te convienen, puedes apagar solo **Protección táctil reforzada** y conservar la cubierta.
-- No activa su controlador si otro servicio solicita exploración táctil y tiene la capacidad correspondiente, para no disputar el control con un lector de pantalla. También se comprueban las solicitudes de servicios antiguos que pueden tener autorización previa. El diagnóstico identifica el servicio y la causa concreta.
-- Si la estructura no se reconoce con suficiente confianza, no pone ninguna cubierta. Una actualización de WhatsApp puede exigir adaptar el detector.
-- No actúa sobre barras laterales de tabletas ni pantallas externas.
+Si la pantalla negra no aparece, entra en Novedades, vuelve a **Sin Novedades** y pulsa **Copiar diagnóstico**. El informe guarda por separado la última barra reconocida aunque después abras un chat. No incluye mensajes ni capturas.
 
 ## Privacidad y permisos
 
-Android concede al servicio de Accesibilidad la capacidad de acceder al contenido visible. La app solo busca etiquetas y geometría de navegación en WhatsApp, y utiliza eventos de cambio de ventana para retirar la cubierta al salir. Guarda localmente un diagnóstico técnico de WhatsApp y del control táctil, incluidos los nombres y componentes de otros servicios que solicitan exploración táctil; solo se copia al portapapeles cuando pulsas el botón correspondiente. No guarda ni registra mensajes, no realiza capturas, no tiene permiso de Internet y no incluye analítica ni bibliotecas de terceros.
+Accesibilidad permite consultar la interfaz visible para localizar las pestañas y colocar las cubiertas. Solo se buscan etiquetas y estados de navegación de WhatsApp; los cambios de ventana sirven para retirar las cubiertas al salir. El diagnóstico técnico se guarda en el móvil y solo se copia al portapapeles al pulsar el botón correspondiente.
 
-En Android 13+, utiliza `TouchInteractionController` para consumir o delegar un gesto físico. Desde la 0.3.2, usa `performAction(ACTION_CLICK)` o `ACTION_LONG_CLICK` exclusivamente para ejecutar la pulsación permitida que el usuario acaba de hacer sobre ese mismo control. No usa el foco de accesibilidad como destino. Usa `dispatchGesture` como respaldo, en el punto tocado y tras comprobar que la ventana sigue siendo la misma. No utiliza `performGlobalAction`, no elige otra pestaña ni vuelve a Chats automáticamente. El servicio está protegido por `BIND_ACCESSIBILITY_SERVICE` y solo se activa desde Ajustes.
+La app no guarda mensajes, no realiza capturas, no tiene permiso de Internet, no incluye analítica ni bibliotecas de terceros. No solicita exploración táctil, no registra `TouchInteractionController`, no llama a `dispatchGesture`, `performAction` ni `performGlobalAction`. El servicio está protegido por `BIND_ACCESSIBILITY_SERVICE` y se activa desde Ajustes.
 
 ## Compilar
 
@@ -147,65 +93,18 @@ La APK se firma con una clave privada propia; no es la firma de WhatsApp. Su cer
 
 En la primera compilación, el script crea `.signing/sin-novedades.p12` y `.signing/password.txt`. **No se deben subir a GitHub.** El archivo privado de firma entregado por separado permite conservar la misma identidad en futuras APK. Extrae su carpeta `.signing` dentro del proyecto antes de recompilar una actualización. Sin ese almacén, se generará una firma distinta y Android no aceptará la APK como actualización de la instalación existente.
 
-## Comprobaciones realizadas
+## Comprobaciones
 
-Las 25 comprobaciones de `tests/TabDetectorTest.java` cubren el tamaño exacto del botón, etiquetas en español e inglés, mensajes con nombres parecidos, etiquetas duplicadas, barras incompletas, editores de chat, controles fuera de la barra, alta densidad, orientación horizontal, pestañas vecinas sin etiqueta, contenedores omitidos y botones que se solapan. No sustituyen a probar la APK en el móvil.
+Las **44 pruebas** de `tests/TabDetectorTest.java` verifican la detección del botón y los casos que podrían cubrir una pantalla equivocada: barras incompletas, etiquetas parecidas a mensajes, duplicados, editor, controles solapados, alta densidad, orientación horizontal, selección ausente o contradictoria y metadatos negativos. También verifican que el rectángulo negro termina antes de los botones necesarios para salir.
 
-Las 37 comprobaciones de `tests/TouchPolicyTest.java` cubren el toque bloqueado aunque aún no haya cubierta, ambos sentidos del deslizamiento, movimientos lentos y diagonales, desplazamiento vertical, pulsaciones permitidas, multitáctil, cancelación, una pestaña que aparece entre apoyar y levantar el dedo y la liberación duplicada de un mismo toque. La APK compilada se verifica con `apksigner` y `zipalign`, incluida su compatibilidad de firma con la 0.2.0.
+En un emulador Android 16, con la APK final y eventos de entrada del dispositivo virtual, se ha comprobado que deslizar de Comunidades a Novedades activa la pantalla negra, que el contenido oculto no recibe pulsaciones y que tocar Chats permite salir. Las otras pestañas reciben los clics sin acciones de accesibilidad ni reenvíos. El botón Novedades permanece bloqueado por su cubierta. La actualización desde la 0.3.2 conserva el servicio habilitado y Android informa de exploración táctil desactivada, con solo la capacidad de consultar contenido.
 
-La **0.3.1** añadió 20 comprobaciones de `tests/TouchAvailabilityTest.java`: conexiones con las capacidades antiguas, falta de transmisión de pulsaciones, permisos completos, solicitudes de otros servicios sin capacidad, conflictos reales con nombre, servicios antiguos, exclusión del propio servicio y conservación del aviso al salir de WhatsApp. En esa versión pasaron las **80 comprobaciones**, junto con la compilación con SDK 36, la firma original y la alineación de la APK. No se repitió la prueba nativa para la 0.3.1.
+La compilación directa comprueba la firma y la alineación de la APK. El emulador y la pantalla sintética sirven para comprobar la integración, pero no reproducen la estructura accesible privada de WhatsApp ni el rendimiento del Samsung.
 
-La **0.3.2** añade 20 comprobaciones de `tests/TapTargetTest.java` y dos de liberaciones duplicadas. Pasan **102 comprobaciones**. Se verifica la selección del control bajo el dedo, sus límites, los descendientes pulsables, los solapamientos ambiguos, las coordenadas fraccionarias y la exclusión de Novedades y de su contenedor común.
+**La app de `tests/android-fixture` usa deliberadamente el paquete `com.whatsapp` para probar el filtro de paquetes en un emulador vacío. Nunca se debe instalar en un teléfono con WhatsApp real.** No es un cliente de WhatsApp y no forma parte de la APK entregada.
 
-En Android 16 se han probado la acción directa y el respaldo mediante entradas físicas del kernel. La fixture cuenta por separado los intentos de `ACTION_CLICK` y las pulsaciones que recibe. Su botón Llamadas rechaza deliberadamente `ACTION_CLICK`: esto obliga a comprobar el respaldo de la APK de producción. Para las pulsaciones rápidas se envían los informes de apoyo y liberación juntos, evitando que el coste de lanzar comandos en el emulador convierta el ensayo en una pulsación larga.
+## Documentación Android
 
-| Comprobación de la 0.3.2 | Resultado observado |
-| --- | --- |
-| Pulsación simple en Chats y Comunidades | Cada control recibe su acción directa y una sola pulsación |
-| Pulsación simple en el contenido | Se ejecuta una sola vez |
-| Control que rechaza la acción directa | El gesto de respaldo completa una sola pulsación en Llamadas |
-| Abrir un chat y volver mediante su botón | Se entra en el chat y se vuelve a navegación |
-| Pulsar Novedades y después Comunidades al volver | Novedades no recibe ninguna pulsación; Comunidades recibe una |
-| Deslizar a izquierda y derecha | No aumenta el contador de deslizamientos horizontales de la fixture |
-| Desplazarse verticalmente | La fixture recibe el desplazamiento |
-
-Estas pruebas no confirman todavía el resultado en el Samsung ni permiten medir su latencia.
-
-En un emulador AOSP con Android 16 se han comprobado la instalación y actualización de la APK firmada y la conexión del servicio. Para la 0.3.0 se ha usado una pantalla sintética con entradas físicas a través del dispositivo de entrada del kernel: la prueba atraviesa el filtro de accesibilidad, en vez de utilizar acciones que pudieran saltárselo. Se comprobó primero que esa pantalla recibía los mismos toques y gestos con el servicio desactivado.
-
-| Comprobación de la 0.3.0 | Resultado observado |
-| --- | --- |
-| Pulsar Novedades con protección | No aumenta su contador de pulsaciones |
-| Deslizar a izquierda y derecha | No aumenta el contador de cambios horizontales |
-| Desplazarse verticalmente | La pantalla recibe el desplazamiento |
-| Pulsar Comunidades | Recibe una sola pulsación |
-| Abrir un chat | Se retira la cubierta y el control táctil permanece activo |
-| Volver del chat e intentar pulsar Novedades | Se vuelve a navegación sin una nueva pulsación de Novedades |
-| Abrir otra aplicación | Android deja de tener activo el filtro de exploración táctil solicitado por esta app |
-
-La prueba de transmisión de pulsaciones detectó y permitió corregir un redondeo de coordenadas de Android: ahora el toque y su región de paso usan el mismo píxel. El emulador no tiene aceleración y necesitó ampliar los tiempos de espera del sistema para evitar reinicios; **no permite medir con fiabilidad la latencia en un móvil real**. La prueba de regreso utiliza la fixture con avisos de accesibilidad retrasados. Estas comprobaciones no sustituyen a verificar la versión de WhatsApp y el dispositivo del usuario.
-
-`tests/build_fixture.py` construye una barra sintética para verificar el comportamiento de la APK de producción en un emulador vacío. La fixture utiliza deliberadamente el paquete `com.whatsapp`: **no debe instalarse en un móvil con WhatsApp** y no implementa sus funciones. Su APK de prueba no se incluye en la distribución.
-
-Para comprobar el comportamiento en el dispositivo: verifica que el botón quede oculto y sus toques no hagan nada; abre un chat y comprueba que puedes escribir; prueba las otras pestañas; gira el móvil; sal de WhatsApp; y pausa la protección desde esta app.
-
-## Código
-
-- `MainActivity.java`: activación, pausa, apariencia y ayuda.
-- `CoverService.java`: inspección limitada de la ventana, ciclo de vida y cubierta que consume los toques.
-- `ServiceStatus.java`: estado del servicio y último diagnóstico técnico local.
-- `TabDetector.java`: reglas de reconocimiento y geometría independientes de Android.
-- `TouchGuard.java`: integración con el controlador táctil de Android 13+, paso directo al sistema y transmisión de los toques permitidos.
-- `TouchPolicy.java`: decisiones por interacción física independientes de Android.
-- `TouchAvailability.java`: requisitos de activación y causas concretas de indisponibilidad, independientes de la app que esté delante.
-- `UserTap.java`: selección del control tocado y ejecución de su acción tras comprobar la ventana y sus límites.
-- `TapTarget.java`: reglas de geometría y jerarquía que excluyen Novedades y controles ambiguos.
-- `scripts/build.py`: compilación y firma reproducibles con herramientas del SDK.
-
-Referencias de plataforma: [servicios de accesibilidad](https://developer.android.com/guide/topics/ui/accessibility/service), [contenedores de accesibilidad](https://developer.android.com/reference/android/accessibilityservice/AccessibilityServiceInfo#FLAG_INCLUDE_NOT_IMPORTANT_VIEWS), [ventanas de accesibilidad](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#TYPE_ACCESSIBILITY_OVERLAY), [firma de aplicaciones](https://developer.android.com/studio/publish/app-signing).
-
-Control táctil: [TouchInteractionController](https://developer.android.com/reference/android/accessibilityservice/TouchInteractionController), [dispatchGesture](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService#dispatchGesture(android.accessibilityservice.GestureDescription,android.accessibilityservice.AccessibilityService.GestureResultCallback,android.os.Handler)) y [zonas de paso directo](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService#setTouchExplorationPassthroughRegion(int,android.graphics.Region)).
-
-Requisitos de activación: [capacidades del servicio](https://developer.android.com/reference/android/accessibilityservice/AccessibilityServiceInfo#getCapabilities()) y [reglas de solicitud de exploración táctil](https://developer.android.com/reference/android/accessibilityservice/AccessibilityServiceInfo#FLAG_REQUEST_TOUCH_EXPLORATION_MODE).
-
-Pulsaciones: [acciones de un nodo](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo#performAction(int)) y [ejemplo oficial de respaldo y duración del toque](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService#dispatchGesture(android.accessibilityservice.GestureDescription,android.accessibilityservice.AccessibilityService.GestureResultCallback,android.os.Handler)).
+- [Estados del nodo accesible](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo).
+- [Selección de elementos de colección](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo.CollectionItemInfo#isSelected()).
+- [Opciones del servicio y exploración táctil](https://developer.android.com/reference/android/accessibilityservice/AccessibilityServiceInfo#FLAG_REQUEST_TOUCH_EXPLORATION_MODE).
