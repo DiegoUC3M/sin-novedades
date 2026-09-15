@@ -157,6 +157,8 @@ public final class CoverService extends AccessibilityService implements SharedPr
             Scan scan=scan(root,screen,density);
             TabDetector.Box found=TabDetector.detect(scan.tabs,screen,density,scan.editor);
             touchState=new TouchSnapshot(found!=null,found,screen,root.getWindowId(),String.valueOf(root.getPackageName()));
+            // Record this inspection's readiness, not the previous window's state.
+            updateTouchMode();
             String details="Ventana: "+screen+"; densidad: "+density+"\n"+windowDetails
                 +"\n"+ServiceStatus.touch
                 +"\nNodos: "+scan.visited+"; límite: "+scan.limited+"; editor: "+scan.editor
@@ -169,7 +171,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
                 return;
             }
             showCover(found);
-            ServiceStatus.whatsapp(this,"Cubierta colocada sobre Novedades.",details+"\nCubierta: "+found);
+            ServiceStatus.whatsapp(this,"Cubierta colocada sobre Novedades.",details+"\nCubierta: "+found,true);
         } catch (RuntimeException failure) {
             removeCover();
             String status="No se pudo comprobar o cubrir la ventana: "+failure.getClass().getSimpleName();

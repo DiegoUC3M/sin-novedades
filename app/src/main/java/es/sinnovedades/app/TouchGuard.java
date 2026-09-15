@@ -5,6 +5,7 @@ import android.accessibilityservice.AccessibilityServiceInfo;
 import android.accessibilityservice.GestureDescription;
 import android.accessibilityservice.TouchInteractionController;
 import android.content.ComponentName;
+import android.content.pm.ResolveInfo;
 import android.graphics.Path;
 import android.graphics.Region;
 import android.graphics.Insets;
@@ -18,6 +19,8 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.WindowMetrics;
 import android.view.accessibility.AccessibilityManager;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Android 13+ input gate. No automatic navigation and no accessibility-focus clicks. */
 final class TouchGuard implements TouchInteractionController.Callback {
@@ -26,6 +29,7 @@ final class TouchGuard implements TouchInteractionController.Callback {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final TouchPolicy policy;
     private boolean active,wanted,closed,registered,delegationRequested,physicalDown,replaying;
+    private boolean receivedInput;
     private long downTime;
     private float downX,downY;
     private CoverService.TouchSnapshot initial;
@@ -69,29 +73,56 @@ final class TouchGuard implements TouchInteractionController.Callback {
         }
     }
 
-    private boolean anotherExplorer() {
+    private TouchAvailability.Result availability(AccessibilityServiceInfo ownInfo) {
         AccessibilityManager manager=(AccessibilityManager)service.getSystemService(AccessibilityService.ACCESSIBILITY_SERVICE);
         ComponentName own=new ComponentName(service,CoverService.class);
+        List<TouchAvailability.OtherService> services=new ArrayList<>();
+        StringBuilder details=new StringBuilder("Capacidades del servicio conectado: ")
+            .append(ownInfo==null ? "sin conexión" : ownInfo.getCapabilities())
+            .append("; necesarias para control y pulsaciones: 34")
+            .append("\nFlags del servicio: ").append(ownInfo==null ? 0 : ownInfo.flags)
+            .append("; exploración táctil del sistema: ").append(manager.isTouchExplorationEnabled());
         for (AccessibilityServiceInfo info:manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
-            if (!own.equals(ComponentName.unflattenFromString(info.getId()))
-                    && (info.flags&AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE)!=0) return true;
+            // ResolveInfo also identifies our component when getId() is absent.
+            ResolveInfo resolve=info.getResolveInfo();
+            ComponentName component=info.getId()==null ? null : ComponentName.unflattenFromString(info.getId());
+            boolean isOwn=own.equals(component);
+            if (resolve!=null && resolve.serviceInfo!=null) {
+                ComponentName declared=new ComponentName(resolve.serviceInfo.packageName,resolve.serviceInfo.name);
+                isOwn|=own.equals(declared);
+                if (component==null) component=declared;
+            }
+            if (isOwn || (info.flags&AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE)==0) continue;
+            int target=resolve!=null && resolve.serviceInfo!=null && resolve.serviceInfo.applicationInfo!=null
+                ? resolve.serviceInfo.applicationInfo.targetSdkVersion : 0;
+            String id=component==null ? "servicio sin identificador" : component.flattenToShortString();
+            CharSequence label=null;
+            try { if (resolve!=null) label=resolve.loadLabel(service.getPackageManager()); }
+            catch (RuntimeException ignored) { /* The component still identifies the service. */ }
+            String name=label==null ? id : label.toString().replace('\n',' ').replace('\r',' ');
+            if (name.length()>120) name=name.substring(0,120);
+            TouchAvailability.OtherService other=new TouchAvailability.OtherService(false,name,info.getCapabilities(),info.flags,target);
+            services.add(other);
+            details.append("\nSolicitud táctil de otro servicio: ").append(name).append(" [").append(id)
+                .append("]; capacidades=").append(info.getCapabilities()).append("; flags=").append(info.flags)
+                .append("; target=").append(target).append("; conflicto=").append(other.conflicts());
         }
-        return false;
+        ServiceStatus.touchDetails=details.toString();
+        return TouchAvailability.check(ownInfo!=null,ownInfo==null ? 0 : ownInfo.getCapabilities(),services);
     }
 
     private void applyMode() {
         if (closed) return;
-        boolean next=wanted && !anotherExplorer();
         AccessibilityServiceInfo info=service.getServiceInfo();
-        if (info==null) return;
-        if (next && (info.getCapabilities()&AccessibilityServiceInfo.CAPABILITY_CAN_REQUEST_TOUCH_EXPLORATION)==0) {
-            ServiceStatus.touch="Falta reconectar accesibilidad para activar la protección táctil.";
-            next=false;
-        }
+        TouchAvailability.Result readiness=availability(info);
+        ServiceStatus.touchReconnect=readiness.reconnect;
+        boolean next=wanted && readiness.ready;
+        if (info==null) { ServiceStatus.touch=readiness.message(wanted); return; }
         if (active!=next) {
             if (next) {
                 controller.registerCallback(null,this);
                 registered=true;
+                receivedInput=false;
                 info.flags|=AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
             }
             else info.flags&=~AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
@@ -100,13 +131,21 @@ final class TouchGuard implements TouchInteractionController.Callback {
             if (active) service.setTouchExplorationPassthroughRegion(Display.DEFAULT_DISPLAY,basePassthrough);
             else if (registered) { controller.unregisterCallback(this); registered=false; }
         }
-        ServiceStatus.touch=active ? "Protección táctil activa." : wanted ?
-            "Protección táctil no disponible; comprueba el permiso y otros servicios de exploración táctil." : "Protección táctil en espera.";
+        AccessibilityManager manager=(AccessibilityManager)service.getSystemService(AccessibilityService.ACCESSIBILITY_SERVICE);
+        String status=readiness.message(wanted);
+        if (active && !manager.isTouchExplorationEnabled())
+            status="Control táctil solicitado; Android aún no ha activado la exploración táctil.";
+        else if (active && receivedInput) status="Protección táctil activa; se reciben gestos.";
+        ServiceStatus.touchDetails+="\nControlador registrado: "+registered+"; control solicitado: "+active
+            +"; entrada recibida en esta activación: "+receivedInput;
+        ServiceStatus.touch(service,status,wanted);
     }
 
     @Override public void onMotionEvent(MotionEvent event) {
         if (closed) return;
         try {
+            ServiceStatus.touchEvents++;
+            receivedInput=true;
             // Android can notify us of DOWN even after a passthrough region has
             // already delegated it. Never request a second state transition or
             // replay that touch; the native stream is already reaching its target.
@@ -204,7 +243,9 @@ final class TouchGuard implements TouchInteractionController.Callback {
     }
 
     private void failed(RuntimeException failure) {
-        ServiceStatus.touch="Protección táctil interrumpida: "+failure.getClass().getSimpleName();
+        ServiceStatus.touchReconnect=true;
+        ServiceStatus.touch(service,"Protección táctil interrumpida: "+failure.getClass().getSimpleName()
+            +". Desactiva y vuelve a activar Sin Novedades en Accesibilidad.",wanted);
         close();
     }
 

@@ -36,9 +36,12 @@ def main():
     tests=build/'tests'; tests.mkdir(exist_ok=True)
     detector=ROOT/'app/src/main/java/es/sinnovedades/app/TabDetector.java'
     policy=ROOT/'app/src/main/java/es/sinnovedades/app/TouchPolicy.java'
-    run([java,'com.sun.tools.javac.Main','--release','8','-encoding','UTF-8','-d',tests,detector,policy,ROOT/'tests/TabDetectorTest.java',ROOT/'tests/TouchPolicyTest.java'])
+    availability=ROOT/'app/src/main/java/es/sinnovedades/app/TouchAvailability.java'
+    run([java,'com.sun.tools.javac.Main','--release','8','-encoding','UTF-8','-d',tests,detector,policy,availability,
+         ROOT/'tests/TabDetectorTest.java',ROOT/'tests/TouchPolicyTest.java',ROOT/'tests/TouchAvailabilityTest.java'])
     run([java,'-cp',tests,'es.sinnovedades.app.TabDetectorTest'])
     run([java,'-cp',tests,'es.sinnovedades.app.TouchPolicyTest'])
+    run([java,'-cp',tests,'es.sinnovedades.app.TouchAvailabilityTest'])
     if args.test_only: return
     sdk=Path(args.sdk) if args.sdk else None
     bt=args.tools or (sdk/'build-tools/36.0.0' if sdk else None)

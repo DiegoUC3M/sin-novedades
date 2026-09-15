@@ -12,11 +12,27 @@ final class ServiceStatus {
     static boolean connected;
     static long lastInspection;
     static long whatsappEvents;
-    static long blockedTaps,blockedSwipes;
+    static long blockedTaps,blockedSwipes,touchEvents;
+    static boolean touchReconnect;
     static String touch="El bloqueo de deslizamientos requiere Android 13 o posterior.";
+    static String touchDetails="Todavía no se han comprobado las capacidades táctiles.";
     static String current="El servicio aún no se ha conectado.";
     private static String previousReport="";
     private static long lastWrite;
+    private static String previousTouch="";
+    private static String previousNavigation="";
+    private static long lastNavigationWrite;
+
+    static void touch(Context context,String status,boolean inWhatsApp) {
+        touch=status;
+        if (!inWhatsApp) return;
+        String report=status+"\n"+touchDetails;
+        if (report.equals(previousTouch)) return;
+        previousTouch=report;
+        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+            .putString("touch_report",report).putString("touch_summary",status)
+            .putLong("touch_time",System.currentTimeMillis()).apply();
+    }
 
     static void checked(String status) {
         lastInspection=SystemClock.elapsedRealtime();
@@ -24,14 +40,23 @@ final class ServiceStatus {
     }
 
     static void whatsapp(Context context,String status,String technical) {
+        whatsapp(context,status,technical,false);
+    }
+
+    static void whatsapp(Context context,String status,String technical,boolean navigation) {
         checked(status);
         String report=status+"\n"+technical;
         long now=SystemClock.elapsedRealtime();
+        SharedPreferences.Editor save=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit();
+        if (navigation && (!report.equals(previousNavigation) || now-lastNavigationWrite>=30000)) {
+            previousNavigation=report; lastNavigationWrite=now;
+            save.putString("navigation_report",report).putLong("navigation_time",System.currentTimeMillis());
+        }
         // Do not write to disk on every accessibility event or poll. Opening the
         // settings app does not overwrite the last WhatsApp observation.
-        if (report.equals(previousReport) && now-lastWrite<30000) return;
+        if (report.equals(previousReport) && now-lastWrite<30000) { save.apply(); return; }
         previousReport=report; lastWrite=now;
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+        save
             .putString("summary",status).putString("report",report)
             .putLong("time",System.currentTimeMillis()).apply();
     }
