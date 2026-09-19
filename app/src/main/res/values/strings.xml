@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">Sin Novedades</string>
     <string name="service_summary">Oculta el botón Novedades y tapa su contenido cuando está seleccionada.</string>
-    <string name="service_description">Reconoce la barra inferior de WhatsApp, cubre el botón Novedades y pone una pantalla negra sobre su contenido cuando detecta esa pestaña seleccionada. Las otras pestañas quedan accesibles para salir. No filtra ni reenvía los gestos de WhatsApp y no cambia de pestaña automáticamente. Accesibilidad permite consultar la interfaz visible para colocar las cubiertas. Todo se procesa en el dispositivo: no guarda mensajes ni envía datos. Puedes desactivarla cuando quieras.</string>
+    <string name="service_description">Reconoce la barra inferior de WhatsApp, cubre el botón Novedades y pone una pantalla negra sobre su contenido cuando detecta esa pestaña seleccionada. También tapa la lista de Actualizaciones ocultas. Las otras pestañas o la flecha de volver quedan accesibles para salir. No filtra ni reenvía los gestos de WhatsApp y no cambia de pestaña automáticamente. Accesibilidad permite consultar la interfaz visible para colocar las cubiertas. Todo se procesa en el dispositivo: no guarda mensajes ni envía datos. Puedes desactivarla cuando quieras.</string>
 </resources>

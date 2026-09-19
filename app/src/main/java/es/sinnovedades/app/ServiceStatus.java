@@ -13,6 +13,7 @@ final class ServiceStatus {
     static long lastInspection;
     static long whatsappEvents;
     static long curtainsShown;
+    static long quickScans,fullScans,inspectionMillis;
     static String current="El servicio aún no se ha conectado.";
     private static String previousReport="";
     private static long lastWrite;
@@ -21,7 +22,7 @@ final class ServiceStatus {
 
     static void prepare(Context context) {
         SharedPreferences saved=saved(context);
-        String version="0.4.0";
+        String version="0.4.1";
         if (!version.equals(saved.getString("version",""))) {
             // Old touch-controller reports must not appear to describe this version.
             saved.edit().clear().putString("version",version).apply();

@@ -79,7 +79,7 @@ public final class MainActivity extends Activity {
         enabled.setMinHeight(dp(60)); enabled.setChecked(prefs.getBoolean("enabled",true));
         enabled.setOnCheckedChangeListener((v,value)->{ prefs.edit().putBoolean("enabled",value).apply(); refresh(); });
         margin(layout,enabled,16);
-        margin(layout,text("Tapa el botón y, si entras en Novedades, oculta su contenido con una pantalla negra. Para salir, pulsa Chats, Comunidades o Llamadas en la barra inferior.",14,muted),2);
+        margin(layout,text("Tapa el botón Novedades, el contenido de esa pestaña y la lista de Actualizaciones ocultas. Para salir, pulsa otra pestaña o utiliza la flecha de volver de la cabecera.",14,muted),2);
 
         margin(layout,text("Los toques y deslizamientos los recibe WhatsApp directamente. La app ya no utiliza el filtro táctil de las versiones anteriores.",14,muted),10);
 
@@ -102,7 +102,7 @@ public final class MainActivity extends Activity {
         privacy.setTypeface(null,Typeface.BOLD); margin(layout,privacy,28);
         margin(layout,text("Accesibilidad permite reconocer la barra y la pestaña seleccionada para colocar las cubiertas. No cambia de pestaña por su cuenta, no guarda mensajes y no tiene permiso de Internet.",14,muted),8);
         margin(layout,button("Ayuda de instalación",v->help()),16);
-        margin(layout,text("Versión 0.4.0 · Android 8+\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
+        margin(layout,text("Versión 0.4.1 · Android 8+\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
         refresh();
     }
 
@@ -158,6 +158,8 @@ public final class MainActivity extends Activity {
             +"\nEventos de WhatsApp: "+ServiceStatus.whatsappEvents
             +"\nFiltro táctil global: eliminado; sin interceptar ni reenviar gestos."
             +"\nPantallas negras mostradas: "+ServiceStatus.curtainsShown
+            +"\nInspecciones rápidas: "+ServiceStatus.quickScans+"; de bordes: "+ServiceStatus.fullScans
+            +"\nÚltima inspección de WhatsApp: "+ServiceStatus.inspectionMillis+" ms"
             +"\nÚltima comprobación de WhatsApp (fecha): "+saved.getLong("time",0)
             +"\n"+saved.getString("report","Todavía no hay ninguna comprobación de WhatsApp.")
             +"\nÚltima barra inferior reconocida (fecha): "+saved.getLong("navigation_time",0)
@@ -171,7 +173,7 @@ public final class MainActivity extends Activity {
         Runnable open=()->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
         if (serviceEnabled() || prefs.getBoolean("disclosure",false)) { open.run(); return; }
         new AlertDialog.Builder(this).setTitle("Activar Sin Novedades")
-            .setMessage("Android pedirá acceso al contenido de la pantalla. Sin Novedades lo utiliza para reconocer las pestañas de WhatsApp, tapar el botón Novedades y ocultar su contenido cuando esté seleccionada. Las otras pestañas quedan libres para salir. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
+            .setMessage("Android pedirá acceso al contenido de la pantalla. Sin Novedades lo utiliza para reconocer las pestañas de WhatsApp, tapar el botón Novedades y ocultar su contenido cuando esté seleccionada. La lista de Actualizaciones ocultas también se tapa, conservando su flecha de volver. Las otras pestañas quedan libres para salir. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
             .setNegativeButton("Ahora no",null).setPositiveButton("Continuar",(d,w)->{
                 prefs.edit().putBoolean("disclosure",true).apply(); open.run();
             }).show();
@@ -209,7 +211,7 @@ public final class MainActivity extends Activity {
 
     private void help() {
         new AlertDialog.Builder(this).setTitle("Cómo activarlo")
-            .setMessage("1. Activa Sin Novedades en Ajustes > Accesibilidad > Aplicaciones o servicios instalados.\n\n2. Si Android muestra Ajustes restringidos, abre Ajustes > Aplicaciones > Sin Novedades > menú ⋮ > Permitir ajustes restringidos. Después vuelve a Accesibilidad.\n\n3. Abre WhatsApp. El botón Novedades queda cubierto. Si llegas a esa pestaña deslizando o antes de aparecer la cubierta, su contenido se tapa en negro cuando se detecta la selección. Pulsa otra pestaña de la barra inferior para salir.\n\nLa detección es reactiva: puede verse brevemente el contenido antes de que Android avise. Si WhatsApp no expone la pestaña seleccionada, la pantalla negra no puede activarse; el diagnóstico indica ese caso.\n\nSi sigue fallando, entra en Novedades, vuelve aquí y pulsa Copiar diagnóstico.\n\nReconoce etiquetas en español e inglés. No cubre enlaces directos a estados o canales sin la barra inferior.\n\nPuedes pausar la protección con el interruptor o desactivar el servicio en Ajustes.")
+            .setMessage("1. Activa Sin Novedades en Ajustes > Accesibilidad > Aplicaciones o servicios instalados.\n\n2. Si Android muestra Ajustes restringidos, abre Ajustes > Aplicaciones > Sin Novedades > menú ⋮ > Permitir ajustes restringidos. Después vuelve a Accesibilidad.\n\n3. Abre WhatsApp. El botón Novedades queda cubierto. Si llegas a esa pestaña deslizando o antes de aparecer la cubierta, su contenido se tapa en negro cuando se detecta la selección. Pulsa otra pestaña de la barra inferior para salir. La lista de Actualizaciones ocultas también se tapa; usa su flecha de volver para salir.\n\nLa detección es reactiva: puede verse brevemente el contenido antes de que Android avise. Si WhatsApp no expone la pestaña seleccionada, no puede activarse la cubierta de Novedades; el diagnóstico indica ese caso. Actualizaciones ocultas se reconoce por su cabecera.\n\nSi sigue fallando, entra en Novedades, vuelve aquí y pulsa Copiar diagnóstico.\n\nReconoce etiquetas en español e inglés. No cubre enlaces directos a estados o canales sin la barra inferior.\n\nPuedes pausar la protección con el interruptor o desactivar el servicio en Ajustes.")
             .setPositiveButton("Entendido",null).show();
     }
 

@@ -1,12 +1,12 @@
 # Sin Novedades
 
-App personal para Android que tapa el botón **Novedades** de WhatsApp y oculta su contenido cuando detecta esa pestaña seleccionada. No requiere root ni modificar WhatsApp.
+App personal para Android que tapa el botón **Novedades** de WhatsApp y oculta su contenido cuando detecta esa pestaña seleccionada. También tapa la lista de **Actualizaciones ocultas**. No requiere root ni modificar WhatsApp.
 
 ## Descargar e instalar
 
-Descarga la [APK firmada 0.4.0](https://github.com/DiegoUC3M/sin-novedades/raw/refs/heads/main/dist/sin-novedades-0.4.0.apk).
+Descarga la [APK firmada 0.4.1](https://github.com/DiegoUC3M/sin-novedades/raw/refs/heads/main/dist/sin-novedades-0.4.1.apk).
 
-**Instálala encima de la versión anterior.** Conserva el identificador y la firma; no hace falta desinstalar. La 0.4.0 elimina el filtro táctil de la serie 0.3.x y su interruptor. Al conectarse, también restablece las opciones dinámicas del servicio para retirar la solicitud antigua de exploración táctil.
+**Instálala encima de la versión anterior.** Conserva el identificador y la firma; no hace falta desinstalar. Desde la 0.4.0 se ha eliminado el filtro táctil de la serie 0.3.x y su interruptor. Al conectarse, también restablece las opciones dinámicas del servicio para retirar la solicitud antigua de exploración táctil.
 
 Para una instalación nueva:
 
@@ -14,11 +14,24 @@ Para una instalación nueva:
 2. Pulsa **Activar accesibilidad** y activa el servicio en Ajustes → Accesibilidad → Aplicaciones o servicios instalados.
 3. Si Android muestra **Ajustes restringidos**, permite los ajustes restringidos desde Ajustes → Aplicaciones → Sin Novedades → ⋮ y vuelve a Accesibilidad. La ubicación varía según el móvil.
 4. Abre WhatsApp. El botón Novedades queda cubierto al reconocerse la barra inferior.
-5. Si llegas a Novedades deslizando o pulsando antes de que aparezca la cubierta, su contenido se tapa en negro al detectarse la selección. **Pulsa otra pestaña de la barra inferior para salir.**
+5. Si llegas a Novedades deslizando o pulsando antes de que aparezca la cubierta, su contenido se tapa en negro al detectarse la selección. **Pulsa otra pestaña de la barra inferior para salir.** En Actualizaciones ocultas se cubre la lista y se conserva la cabecera con su flecha de volver.
 
 El interruptor **Ocultar Novedades** pausa ambas cubiertas. **Elegir color** cambia solo la cubierta pequeña del botón para igualarla al fondo de WhatsApp; la pantalla de contenido permanece negra.
 
-## Cambio de la 0.4.0
+## Cambios de la 0.4.1
+
+Esta actualización responde a la demora al entrar en Novedades y añade la pantalla independiente **Actualizaciones ocultas**.
+
+- Los avisos de selección, cambio de ventana, pulsación, desplazamiento de un ViewPager y cambio de descripción de estado se atienden sin la espera general de 80 ms. Los cambios ordinarios de contenido y los desplazamientos de listas siguen agrupándose para evitar inspecciones continuas.
+- Tras reconocer la barra, se conservan referencias solo a sus etiquetas. En las comprobaciones siguientes se refrescan las etiquetas y sus contenedores, se vuelve a validar la fila completa y se comprueba la ventana y sus límites. Los contenedores compartidos se refrescan una vez por comprobación.
+- Si una referencia deja de ser válida, cambia la etiqueta o desaparece la barra, se descarta la caché y se busca de nuevo. La búsqueda se concentra en los bordes superior e inferior: omite los descendientes de filas visibles situadas completamente en la zona central, conservando el recorrido de contenedores invisibles.
+- El reintento cuando WhatsApp está delante pasa de 1000 a **250 ms**. Eso acorta la espera si falta un aviso de Android; no es una garantía de tiempo de dibujo ni implica que todo el proceso sea cuatro veces más rápido.
+- **Actualizaciones ocultas** se reconoce por el título exacto, una cabecera con geometría válida y un botón para volver. Se tapa la lista, dejando libre la cabecera y la zona de navegación del sistema. Un editor de chat visible impide activar esta cubierta.
+- El diagnóstico diferencia la actualización de pestañas de la búsqueda por los bordes y muestra la duración de la última inspección de WhatsApp.
+
+La entrada táctil sigue siendo directa: no se recupera el controlador de la serie 0.3.x ni se cambia de pestaña automáticamente.
+
+## Cambio de la 0.4.0 (versión anterior)
 
 Las versiones anteriores intentaban impedir la entrada a Novedades interceptando los gestos. En el móvil del usuario, ese método alteraba las pulsaciones e introducía retardo. Esta versión elimina ese controlador, las pulsaciones por accesibilidad y los gestos sintéticos.
 
@@ -37,9 +50,9 @@ Las versiones anteriores intentaban impedir la entrada a Novedades interceptando
 - Reconoce etiquetas en español e inglés. Admite WhatsApp e intenta reconocer la barra de WhatsApp Business.
 - **La pantalla negra es reactiva:** el contenido puede verse brevemente antes de que Android notifique el cambio. No garantiza ocultarlo desde el primer fotograma ni impedir la pulsación inicial antes de colocar la cubierta pequeña.
 - Si WhatsApp no expone qué pestaña está seleccionada, solo se cubre el botón. La última comprobación indica expresamente ese caso.
-- No cubre accesos directos a estados o canales que no muestren una barra inferior reconocible, ni cambia la interfaz interna de WhatsApp.
+- Cubre la pestaña Novedades y la lista Actualizaciones ocultas. Los visores individuales de estados y otras pantallas de canales quedan fuera de este detector; no cambia la interfaz interna de WhatsApp.
 - No está diseñada como un bloqueo inviolable. No actúa sobre barras laterales de tabletas ni pantallas externas.
-- Su funcionamiento en la interfaz real del Samsung SM-S938B del usuario queda pendiente de comprobar; las pruebas locales usan una pantalla sintética de Android 16.
+- La nueva versión queda pendiente de comprobar en el Samsung SM-S938B del usuario con WhatsApp real.
 
 Si la pantalla negra no aparece, entra en Novedades, vuelve a **Sin Novedades** y pulsa **Copiar diagnóstico**. El informe guarda por separado la última barra reconocida aunque después abras un chat. No incluye mensajes ni capturas.
 
@@ -93,15 +106,13 @@ La APK se firma con una clave privada propia; no es la firma de WhatsApp. Su cer
 
 En la primera compilación, el script crea `.signing/sin-novedades.p12` y `.signing/password.txt`. **No se deben subir a GitHub.** El archivo privado de firma entregado por separado permite conservar la misma identidad en futuras APK. Extrae su carpeta `.signing` dentro del proyecto antes de recompilar una actualización. Sin ese almacén, se generará una firma distinta y Android no aceptará la APK como actualización de la instalación existente.
 
-## Comprobaciones
+## Comprobaciones de la 0.4.1
 
-Las **44 pruebas** de `tests/TabDetectorTest.java` verifican la detección del botón y los casos que podrían cubrir una pantalla equivocada: barras incompletas, etiquetas parecidas a mensajes, duplicados, editor, controles solapados, alta densidad, orientación horizontal, selección ausente o contradictoria y metadatos negativos. También verifican que el rectángulo negro termina antes de los botones necesarios para salir.
+**76 pruebas**: 44 del detector de pestañas y 32 de geometría, títulos y programación de inspecciones. Incluyen títulos parciales o parecidos a mensajes, cabeceras sin botón para volver, editor visible, coordenadas fuera de pantalla, alta densidad, orientación RTL, conservación de la navegación y prioridad de los avisos de selección frente a los cambios ordinarios de contenido.
 
-En un emulador Android 16, con la APK final y eventos de entrada del dispositivo virtual, se ha comprobado que deslizar de Comunidades a Novedades activa la pantalla negra, que el contenido oculto no recibe pulsaciones y que tocar Chats permite salir. Las otras pestañas reciben los clics sin acciones de accesibilidad ni reenvíos. El botón Novedades permanece bloqueado por su cubierta. La actualización desde la 0.3.2 conserva el servicio habilitado y Android informa de exploración táctil desactivada, con solo la capacidad de consultar contenido.
+La compilación directa verifica la firma original y la alineación de la APK. Las pruebas unitarias no miden el tiempo de dibujo ni reproducen el árbol accesible real de WhatsApp. La comprobación de integración de esta versión quedó pendiente porque el emulador Android 16 no terminó de arrancar; todavía falta comprobar las cubiertas y su rapidez en el móvil real.
 
-La compilación directa comprueba la firma y la alineación de la APK. El emulador y la pantalla sintética sirven para comprobar la integración, pero no reproducen la estructura accesible privada de WhatsApp ni el rendimiento del Samsung.
-
-**La app de `tests/android-fixture` usa deliberadamente el paquete `com.whatsapp` para probar el filtro de paquetes en un emulador vacío. Nunca se debe instalar en un teléfono con WhatsApp real.** No es un cliente de WhatsApp y no forma parte de la APK entregada.
+**La app de `tests/android-fixture` usa deliberadamente el paquete `com.whatsapp` para probar el filtro de paquetes en un emulador vacío. Nunca se debe instalar en un teléfono con WhatsApp real.** No es un cliente de WhatsApp y no forma parte de la APK entregada. Incluye una barra seleccionable, navegación a chats y una pantalla sintética de Actualizaciones ocultas con flecha para volver, además del caso de un chat con ese mismo título.
 
 ## Documentación Android
 

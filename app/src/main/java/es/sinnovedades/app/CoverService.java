@@ -22,8 +22,10 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /** Observes navigation and covers only the Updates button and selected page. */
 public final class CoverService extends AccessibilityService implements SharedPreferences.OnSharedPreferenceChangeListener {
@@ -38,16 +40,20 @@ public final class CoverService extends AccessibilityService implements SharedPr
     private boolean stopped;
     private boolean whatsappInFront;
     private long nextInspection,lastStarted,nextCacheRefresh;
+    private final List<LabelRef> navigationNodes=new ArrayList<>();
+    private int navigationWindow=-1;
+    private TabDetector.Box navigationScreen;
     private final Runnable inspect=new Runnable() {
         public void run() {
             nextInspection=0;
             lastStarted=SystemClock.uptimeMillis();
             try { inspectWindow(); }
             finally {
+                if (whatsappInFront) ServiceStatus.inspectionMillis=SystemClock.uptimeMillis()-lastStarted;
                 // Retry even when there is no cover yet: the first snapshot can
                 // precede WhatsApp's navigation layout or the service connection.
                 if (!stopped && prefs!=null && prefs.getBoolean("enabled",true))
-                    scheduleInspection(whatsappInFront ? 1000 : 3000);
+                    scheduleInspection(whatsappInFront ? InspectionPolicy.FOREGROUND_RETRY_MS : 3000);
             }
         }
     };
@@ -85,7 +91,15 @@ public final class CoverService extends AccessibilityService implements SharedPr
             || event.getEventType()==AccessibilityEvent.TYPE_WINDOWS_CHANGED;
         if (isWhatsApp(pkg)) {
             ServiceStatus.whatsappEvents++;
-            scheduleInspection(0);
+            // Window/selection/scroll events must not wait behind a content storm.
+            // Content notifications are coalesced; there is never a touch gate.
+            int type=event.getEventType();
+            boolean pagerScroll=type==AccessibilityEvent.TYPE_VIEW_SCROLLED
+                && String.valueOf(event.getClassName()).toLowerCase(Locale.ROOT).contains("viewpager");
+            boolean stateDescription=type==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                && (event.getContentChangeTypes() & AccessibilityEvent.CONTENT_CHANGE_TYPE_STATE_DESCRIPTION)!=0;
+            scheduleInspection(0,windowChange || type==AccessibilityEvent.TYPE_VIEW_SELECTED
+                || type==AccessibilityEvent.TYPE_VIEW_CLICKED || pagerScroll || stateDescription);
         } else if (windowChange || pkg==null) {
             // Recheck focus on any window change, including our own overlay.
             // Other applications' event text is never read.
@@ -97,8 +111,12 @@ public final class CoverService extends AccessibilityService implements SharedPr
     }
 
     private void scheduleInspection(long delay) {
+        scheduleInspection(delay,true);
+    }
+
+    private void scheduleInspection(long delay,boolean urgent) {
         if (stopped) return;
-        long due=Math.max(SystemClock.uptimeMillis()+delay,lastStarted+80);
+        long due=InspectionPolicy.due(SystemClock.uptimeMillis(),lastStarted,delay,urgent);
         // Coalesce events without moving an already pending check further away.
         // Continuous content events must not postpone detection indefinitely.
         if (nextInspection!=0 && nextInspection<=due) return;
@@ -115,6 +133,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
         KeyguardManager keyguard=(KeyguardManager)getSystemService(KEYGUARD_SERVICE);
         if (!power.isInteractive() || keyguard.isKeyguardLocked()) { inactive("Pantalla apagada o bloqueada."); return; }
         AccessibilityNodeInfo root=null;
+        Scan observation=null;
         String windowDetails="";
         try {
             // Events invalidate the cache normally. A periodic refresh also
@@ -127,6 +146,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
             // Only the focused application's root is obtained; other app trees are not scanned.
             List<AccessibilityWindowInfo> windows=getWindows();
             String obstruction="";
+            List<TabDetector.Box> systemWindows=new ArrayList<>();
             StringBuilder metadata=new StringBuilder("Ventanas: ");
             try {
                 for (AccessibilityWindowInfo w:windows) {
@@ -137,6 +157,8 @@ public final class CoverService extends AccessibilityService implements SharedPr
                     }
                     if (w.getType()==AccessibilityWindowInfo.TYPE_SYSTEM && w.isFocused() && !bounds.isEmpty())
                         obstruction="Una ventana del sistema tiene el foco.";
+                    if (w.getType()==AccessibilityWindowInfo.TYPE_SYSTEM && !bounds.isEmpty())
+                        systemWindows.add(new TabDetector.Box(bounds.left,bounds.top,bounds.right,bounds.bottom));
                     if (w.getType()==AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY && (w.isFocused() || w.isActive())
                         && !isOwnOverlay(w))
                         obstruction="Otra cubierta de accesibilidad está activa.";
@@ -144,12 +166,12 @@ public final class CoverService extends AccessibilityService implements SharedPr
                         if (Build.VERSION.SDK_INT>=30 && w.getDisplayId()!=0)
                             obstruction="Las pantallas externas no están admitidas.";
                         if (root!=null) root.recycle();
-                        root=w.getRoot();
+                        root=Build.VERSION.SDK_INT>=33 ? w.getRoot(0) : w.getRoot();
                     }
                 }
             } finally { for (AccessibilityWindowInfo w:windows) w.recycle(); }
             windowDetails=metadata.toString();
-            if (root==null) root=getRootInActiveWindow();
+            if (root==null) root=Build.VERSION.SDK_INT>=33 ? getRootInActiveWindow(0) : getRootInActiveWindow();
             if (root==null) { inactive("Android no ha entregado una ventana accesible."); return; }
             if (!isWhatsApp(root.getPackageName())) { inactive("Esperando a que abras WhatsApp."); return; }
             whatsappInFront=true;
@@ -158,17 +180,45 @@ public final class CoverService extends AccessibilityService implements SharedPr
             }
             TabDetector.Box screen=box(root);
             float density=getResources().getDisplayMetrics().density;
-            Scan scan=scan(root,screen,density);
+            Scan scan=quickScan(root,screen,density);
+            if (scan==null) {
+                clearNavigationCache();
+                if (Build.VERSION.SDK_INT>=33) clearCache();
+                if (!root.refresh()) { inactive("La ventana está cambiando; reintentando."); return; }
+                screen=box(root);
+                scan=scan(root,screen,density); ServiceStatus.fullScans++;
+            }
+            else ServiceStatus.quickScans++;
+            observation=scan;
             TabDetector.Navigation nav=TabDetector.navigation(scan.tabs,screen,density,scan.editor);
+            int contentBottom=screen.bottom;
+            for (TabDetector.Box b:systemWindows) {
+                if (b.width()>=screen.width()*0.7 && b.bottom>=screen.bottom
+                    && b.top>screen.bottom-120*density) contentBottom=Math.min(contentBottom,b.top);
+            }
+            TabDetector.Box hidden=scan.header==null || scan.limited ? null
+                : ScreenRules.hiddenContent(screen,scan.header.title,scan.header.bar,scan.header.back,
+                    density,scan.editor,contentBottom);
             String details="Ventana: "+screen+"; densidad: "+density+"\n"+windowDetails
+                +"\nInspección: "+(scan.quick?"pestañas refrescadas":"bordes de la pantalla")
                 +"\nNodos: "+scan.visited+"; límite: "+scan.limited+"; editor: "+scan.editor
                 +"\nEtiquetas: "+scan.labels+"; botones candidatos: "+scan.tabs.size()+"\n"+scan.report;
+            if (hidden!=null) {
+                clearNavigationCache(); removeCover(); showCurtain(hidden);
+                ServiceStatus.whatsapp(this,"Actualizaciones ocultas tapadas. Usa la flecha de volver.",
+                    details+"\nPantalla: hidden_updates; cabecera: "+scan.header.bar+"; pantalla negra: "+hidden);
+                return;
+            }
             if (nav==null) {
                 removeOverlays();
                 ServiceStatus.whatsapp(this,scan.editor ? "Editor de chat visible: cubierta retirada."
                     : scan.labels==0 ? "WhatsApp detectado; no se ven etiquetas de la barra inferior."
                     : "WhatsApp detectado; la barra inferior no se ha reconocido.",details);
                 return;
+            }
+            if (!scan.quick && !scan.limited && scan.refs.size()==scan.tabs.size()) {
+                navigationNodes.addAll(scan.refs); scan.refs.clear();
+                navigationWindow=root.getWindowId(); navigationScreen=screen;
             }
             if (nav.updatesOpen()) showCurtain(nav.content); else removeCurtain();
             showCover(nav.target);
@@ -183,15 +233,59 @@ public final class CoverService extends AccessibilityService implements SharedPr
             if (whatsappInFront) ServiceStatus.whatsapp(this,status,windowDetails);
             else ServiceStatus.checked(status);
         } finally {
+            if (observation!=null) observation.close();
             if (root!=null) root.recycle();
         }
     }
 
     private static final class Scan {
         final List<TabDetector.Tab> tabs=new ArrayList<>();
+        final List<LabelRef> refs=new ArrayList<>();
         final StringBuilder report=new StringBuilder();
         int visited,labels;
-        boolean editor,limited;
+        boolean editor,limited,quick;
+        Header header;
+        void close() { for (LabelRef ref:refs) ref.node.recycle(); refs.clear(); }
+    }
+
+    private static final class LabelRef {
+        final AccessibilityNodeInfo node;
+        final String kind;
+        LabelRef(AccessibilityNodeInfo node,String kind) { this.node=AccessibilityNodeInfo.obtain(node); this.kind=kind; }
+    }
+
+    private static final class Header {
+        final TabDetector.Box title,bar,back;
+        Header(TabDetector.Box title,TabDetector.Box bar,TabDetector.Box back) {
+            this.title=title; this.bar=bar; this.back=back;
+        }
+    }
+
+    private void clearNavigationCache() {
+        for (LabelRef ref:navigationNodes) ref.node.recycle();
+        navigationNodes.clear(); navigationWindow=-1; navigationScreen=null;
+    }
+
+    private Scan quickScan(AccessibilityNodeInfo root,TabDetector.Box screen,float d) {
+        if (navigationNodes.isEmpty() || navigationWindow!=root.getWindowId() || !screen.same(navigationScreen)) return null;
+        Scan result=new Scan(); result.quick=true;
+        Set<AccessibilityNodeInfo> refreshed=new HashSet<>();
+        try {
+        for (LabelRef ref:navigationNodes) {
+            AccessibilityNodeInfo node=ref.node;
+            if (!node.refresh() || !node.isVisibleToUser() || !isWhatsApp(node.getPackageName())) return null;
+            String kind=TabDetector.label(node.getText());
+            if (kind.isEmpty()) kind=TabDetector.label(node.getContentDescription());
+            if (!kind.equals(ref.kind)) return null;
+            TabDetector.Tab tab=candidate(node,kind,screen,d,refreshed);
+            if (tab==null) return null;
+            result.visited++; result.labels++; result.tabs.add(tab);
+            describe(result,kind,box(node),tab);
+        }
+        // Every reference is refreshed and the complete row is revalidated.
+        // A detached/reused node, changed label or missing tab forces rediscovery.
+        return TabDetector.navigation(result.tabs,screen,d,false)==null ? null : result;
+        } finally { for (AccessibilityNodeInfo node:refreshed) node.recycle(); }
     }
 
     private Scan scan(AccessibilityNodeInfo root,TabDetector.Box screen,float d) {
@@ -203,19 +297,23 @@ public final class CoverService extends AccessibilityService implements SharedPr
                 AccessibilityNodeInfo node=queue.removeFirst();
                 result.visited++;
                 try {
+                    TabDetector.Box b=box(node);
+                    boolean visible=node.isVisibleToUser();
                     // An unimportant or invisible wrapper can still expose visible
                     // descendants. Traverse children before filtering this node.
-                    for (int i=0;i<node.getChildCount();i++) {
-                        AccessibilityNodeInfo child=node.getChild(i);
+                    if (ScreenRules.visitChildren(b,screen,d,visible)) for (int i=0;i<node.getChildCount();i++) {
+                        AccessibilityNodeInfo child=Build.VERSION.SDK_INT>=33 ? node.getChild(i,0) : node.getChild(i);
                         if (child!=null) {
                             // Visit the footer before long chat/community lists.
                             if (box(child).bottom>=screen.bottom-260*d) queue.addFirst(child);
                             else queue.addLast(child);
                         }
                     }
-                    if (!node.isVisibleToUser()) continue;
-                    TabDetector.Box b=box(node);
+                    if (!visible) continue;
                     if (node.isEditable() && b.bottom>screen.bottom-240*d) { result.editor=true; break; }
+                    if (result.header==null && ScreenRules.headerTitle(b,screen,d)
+                        && (ScreenRules.hiddenTitle(node.getText()) || ScreenRules.hiddenTitle(node.getContentDescription())))
+                        result.header=header(node,screen,d);
                     // Only inspect small labels in the navigation band. Raw text
                     // and descriptions are never retained in the diagnostic report.
                     if (b.top>=screen.bottom-260*d && b.width()>0 && b.height()>0
@@ -225,33 +323,94 @@ public final class CoverService extends AccessibilityService implements SharedPr
                         if (!kind.isEmpty()) {
                             result.labels++;
                             TabDetector.Tab candidate=candidate(node,kind,screen,d);
-                            if (candidate!=null) result.tabs.add(candidate);
-                            if (result.labels<=16) {
-                                result.report.append(kind).append(" etiqueta=").append(b);
-                                if (candidate==null) result.report.append(" sin botón pulsable o semántico");
-                                else result.report.append(" botón=").append(candidate.hit).append(" barra=")
-                                    .append(candidate.bar).append(" semántica=").append(candidate.tabHint)
-                                    .append(" seleccionada=").append(candidate.selected);
-                                result.report.append('\n');
+                            if (candidate!=null) {
+                                result.tabs.add(candidate);
+                                if (result.refs.size()<16) result.refs.add(new LabelRef(node,kind));
                             }
+                            describe(result,kind,b,candidate);
                         }
                     }
                 } finally { node.recycle(); }
             }
             result.limited=!queue.isEmpty() && !result.editor;
-        } finally { while (!queue.isEmpty()) queue.removeFirst().recycle(); }
+        } catch (RuntimeException failure) { result.close(); throw failure; }
+        finally { while (!queue.isEmpty()) queue.removeFirst().recycle(); }
         return result;
     }
 
+    private void describe(Scan result,String kind,TabDetector.Box b,TabDetector.Tab tab) {
+        if (result.labels>16) return;
+        result.report.append(kind).append(" etiqueta=").append(b);
+        if (tab==null) result.report.append(" sin botón pulsable o semántico");
+        else result.report.append(" botón=").append(tab.hit).append(" barra=").append(tab.bar)
+            .append(" semántica=").append(tab.tabHint).append(" seleccionada=").append(tab.selected);
+        result.report.append('\n');
+    }
+
+    private Header header(AccessibilityNodeInfo title,TabDetector.Box screen,float d) {
+        AccessibilityNodeInfo current=AccessibilityNodeInfo.obtain(title);
+        try {
+            for (int depth=0;current!=null && depth<8;depth++) {
+                TabDetector.Box bar=box(current);
+                if (ScreenRules.toolbar(bar,screen,d)) {
+                    TabDetector.Box back=backButton(current,bar,screen,d);
+                    if (back!=null) return new Header(box(title),bar,back);
+                }
+                if (bar.height()>220*d) break;
+                AccessibilityNodeInfo parent=Build.VERSION.SDK_INT>=33 ? current.getParent(0) : current.getParent();
+                current.recycle(); current=parent;
+            }
+        } finally { if (current!=null) current.recycle(); }
+        return null;
+    }
+
+    private TabDetector.Box backButton(AccessibilityNodeInfo barNode,TabDetector.Box bar,TabDetector.Box screen,float d) {
+        ArrayDeque<AccessibilityNodeInfo> queue=new ArrayDeque<>();
+        queue.add(AccessibilityNodeInfo.obtain(barNode)); int visited=0;
+        try {
+            while (!queue.isEmpty() && visited++<40) {
+                AccessibilityNodeInfo node=queue.removeFirst();
+                try {
+                    TabDetector.Box b=box(node);
+                    String cls=String.valueOf(node.getClassName()).toLowerCase(Locale.ROOT);
+                    String id=String.valueOf(node.getViewIdResourceName()).toLowerCase(Locale.ROOT);
+                    boolean back=ScreenRules.backLabel(node.getContentDescription()) || ScreenRules.backLabel(node.getText())
+                        || id.endsWith("/up") || id.endsWith("/back") || id.contains("back_button")
+                        || (cls.contains("imagebutton") && b.right<=screen.left+screen.width()*0.3);
+                    boolean clickable=node.isClickable() || (node.getActions() & AccessibilityNodeInfo.ACTION_CLICK)!=0;
+                    if (back && node.isVisibleToUser() && clickable && bar.contains(b)
+                        && b.width()<=96*d && b.height()<=96*d
+                        && (b.right<=screen.left+screen.width()*0.3 || b.left>=screen.right-screen.width()*0.3)) return b;
+                    for (int i=0;i<node.getChildCount();i++) {
+                        AccessibilityNodeInfo child=Build.VERSION.SDK_INT>=33 ? node.getChild(i,0) : node.getChild(i);
+                        if (child!=null) queue.addLast(child);
+                    }
+                } finally { node.recycle(); }
+            }
+        } finally { while (!queue.isEmpty()) queue.removeFirst().recycle(); }
+        return null;
+    }
+
     private TabDetector.Tab candidate(AccessibilityNodeInfo node,String kind,TabDetector.Box screen,float d) {
+        return candidate(node,kind,screen,d,null);
+    }
+
+    private TabDetector.Tab candidate(AccessibilityNodeInfo node,String kind,TabDetector.Box screen,float d,
+            Set<AccessibilityNodeInfo> refreshed) {
         AccessibilityNodeInfo current=AccessibilityNodeInfo.obtain(node);
         TabDetector.Box hit=null,semanticHit=null,bar=null;
         boolean hint=false,selected=false;
         try {
             for (int depth=0;current!=null && depth<16;depth++) {
                 TabDetector.Box b=box(current);
+                if (b.height()>180*d || (b.height()>0 && b.top<screen.bottom-260*d)) break;
+                if (refreshed!=null && depth>0 && !refreshed.contains(current)) {
+                    if (!current.refresh()) return null;
+                    refreshed.add(AccessibilityNodeInfo.obtain(current));
+                    b=box(current);
+                }
                 if (b.width()<=0 || b.height()<=0) {
-                    AccessibilityNodeInfo parent=current.getParent();
+                    AccessibilityNodeInfo parent=Build.VERSION.SDK_INT>=33 ? current.getParent(0) : current.getParent();
                     current.recycle(); current=parent; continue;
                 }
                 if (b.height()>180*d || b.top<screen.bottom-260*d) break;
@@ -281,7 +440,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
                         && b.height()>=36*d && b.width()>=40*d) semanticHit=b;
                 }
                 if (bar==null && b.width()>=screen.width()*0.7 && b.height()<=150*d && b.height()>=28*d) bar=b;
-                AccessibilityNodeInfo parent=current.getParent();
+                AccessibilityNodeInfo parent=Build.VERSION.SDK_INT>=33 ? current.getParent(0) : current.getParent();
                 current.recycle(); current=parent;
             }
         } finally { if (current!=null) current.recycle(); }
@@ -383,7 +542,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
         curtain=null; veiled=null;
     }
 
-    private void removeOverlays() { removeCurtain(); removeCover(); }
+    private void removeOverlays() { clearNavigationCache(); removeCurtain(); removeCover(); }
 
     private void inactive(String status) { removeOverlays(); ServiceStatus.checked(status); }
 

@@ -37,7 +37,9 @@ public final class FixtureActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         stats=getSharedPreferences("fixture",MODE_PRIVATE);
-        showNavigation();
+        String page=getIntent().getStringExtra("page");
+        if ("hidden".equals(page) || "chat_named_hidden".equals(page)) showHidden("chat_named_hidden".equals(page));
+        else showNavigation();
     }
 
     private void base(String title) {
@@ -146,6 +148,30 @@ public final class FixtureActivity extends Activity {
         EditText input=new EditText(this); input.setHint("Escribe aquí");
         root.addView(input,new LinearLayout.LayoutParams(-1,64));
         remember(input,"editor_center");
+    }
+
+    private void showHidden(boolean chat) {
+        handler.removeCallbacks(storm); navigation=false; muteUntil=0;
+        base(""); root.removeView(state);
+        LinearLayout toolbar=new LinearLayout(this) {
+            @Override public CharSequence getAccessibilityClassName() { return "android.widget.Toolbar"; }
+        };
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        Button back=new Button(this); back.setText("←"); back.setContentDescription("Navigate up");
+        back.setOnClickListener(v->{count("hidden_back");showNavigation();});
+        toolbar.addView(back,new LinearLayout.LayoutParams(56,56)); remember(back,"hidden_back_center");
+        state.setText("Actualizaciones ocultas"); state.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.addView(state,new LinearLayout.LayoutParams(-1,56));
+        root.addView(toolbar,new LinearLayout.LayoutParams(-1,56));
+        TextView content=new TextView(this); content.setText("Lista de estados de prueba");
+        content.setGravity(Gravity.TOP);content.setTextColor(0xff111111);
+        content.setOnClickListener(v->count("hidden_content_taps"));
+        root.addView(content,new LinearLayout.LayoutParams(-1,0,1));remember(content,"hidden_content_center");
+        if (chat) {
+            EditText editor=new EditText(this);editor.setHint("Mensaje de prueba");
+            root.addView(editor,new LinearLayout.LayoutParams(-1,64));
+        }
+        stats.edit().putString("screen",chat?"chat_named_hidden":"hidden").apply();
     }
 
     private void count(String key) { stats.edit().putInt(key,stats.getInt(key,0)+1).apply(); }
