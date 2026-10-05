@@ -14,19 +14,22 @@ final class ServiceStatus {
     static long whatsappEvents;
     static long curtainsShown;
     static long quickScans,fullScans,inspectionMillis;
+    static long pagerChecks,pagerTransitions;
     static String current="El servicio aún no se ha conectado.";
     private static String previousReport="";
     private static long lastWrite;
     private static String previousNavigation="";
     private static long lastNavigationWrite;
+    private static String previousTransition="";
 
     static void prepare(Context context) {
         SharedPreferences saved=saved(context);
-        String version="0.4.1";
+        String version="0.4.2";
         if (!version.equals(saved.getString("version",""))) {
             // Old touch-controller reports must not appear to describe this version.
             saved.edit().clear().putString("version",version).apply();
             previousReport=""; previousNavigation=""; lastWrite=0; lastNavigationWrite=0;
+            previousTransition="";
         }
     }
 
@@ -59,5 +62,13 @@ final class ServiceStatus {
 
     static SharedPreferences saved(Context context) {
         return context.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
+    }
+
+    static void transition(Context context,String technical) {
+        if (technical==null) { previousTransition=""; return; }
+        if (technical.equals(previousTransition)) return;
+        previousTransition=technical;
+        saved(context).edit().putString("transition_report",technical)
+            .putLong("transition_time",System.currentTimeMillis()).apply();
     }
 }

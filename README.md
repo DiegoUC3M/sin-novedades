@@ -1,10 +1,10 @@
 # Sin Novedades
 
-App personal para Android que tapa el botón **Novedades** de WhatsApp y oculta su contenido cuando detecta esa pestaña seleccionada. También tapa la lista de **Actualizaciones ocultas**. No requiere root ni modificar WhatsApp.
+App personal para Android que tapa el botón **Novedades** de WhatsApp y oculta su contenido cuando detecta esa pestaña seleccionada o las páginas a mitad de un deslizamiento lateral. También tapa la lista de **Actualizaciones ocultas**. No requiere root ni modificar WhatsApp.
 
 ## Descargar e instalar
 
-Descarga la [APK firmada 0.4.1](https://github.com/DiegoUC3M/sin-novedades/raw/refs/heads/main/dist/sin-novedades-0.4.1.apk).
+Descarga la [APK firmada 0.4.2](https://github.com/DiegoUC3M/sin-novedades/raw/refs/heads/main/dist/sin-novedades-0.4.2.apk).
 
 **Instálala encima de la versión anterior.** Conserva el identificador y la firma; no hace falta desinstalar. Desde la 0.4.0 se ha eliminado el filtro táctil de la serie 0.3.x y su interruptor. Al conectarse, también restablece las opciones dinámicas del servicio para retirar la solicitud antigua de exploración táctil.
 
@@ -14,11 +14,22 @@ Para una instalación nueva:
 2. Pulsa **Activar accesibilidad** y activa el servicio en Ajustes → Accesibilidad → Aplicaciones o servicios instalados.
 3. Si Android muestra **Ajustes restringidos**, permite los ajustes restringidos desde Ajustes → Aplicaciones → Sin Novedades → ⋮ y vuelve a Accesibilidad. La ubicación varía según el móvil.
 4. Abre WhatsApp. El botón Novedades queda cubierto al reconocerse la barra inferior.
-5. Si llegas a Novedades deslizando o pulsando antes de que aparezca la cubierta, su contenido se tapa en negro al detectarse la selección. **Pulsa otra pestaña de la barra inferior para salir.** En Actualizaciones ocultas se cubre la lista y se conserva la cabecera con su flecha de volver.
+5. Si llegas a Novedades deslizando o pulsando antes de que aparezca la cubierta, su contenido se tapa en negro al detectarse la selección o el desplazamiento de las páginas. La cubierta permanece durante una transición detectada aunque mantengas el dedo quieto. **Pulsa otra pestaña de la barra inferior para salir.** En Actualizaciones ocultas se cubre la lista y se conserva la cabecera con su flecha de volver.
 
 El interruptor **Ocultar Novedades** pausa ambas cubiertas. **Elegir color** cambia solo la cubierta pequeña del botón para igualarla al fondo de WhatsApp; la pantalla de contenido permanece negra.
 
-## Cambios de la 0.4.1
+## Cambios de la 0.4.2
+
+En la versión anterior, dejar un gesto a medias podía mostrar parte de Novedades porque Chats seguía marcada. Esta versión comprueba también la posición de las páginas del contenedor principal, incluso cuando la comprobación rápida solo refresca las etiquetas inferiores.
+
+- Localiza un ViewPager principal dentro del contenido validado y refresca los límites de sus raíces de página. Detecta tanto posiciones desplazadas como límites recortados por Android.
+- Durante una transición lateral detectada, cubre todo el contenido superior aunque todavía figure seleccionada Chats u otra pestaña. **Puede mostrar negro también al deslizar entre otras pestañas.** La barra inferior queda accesible.
+- No utiliza un temporizador para retirar esa cubierta: si dejas el gesto a medias, permanece mientras se detecten páginas parciales. Una lectura desconocida o fallida conserva una cubierta ya activada. Una página alineada permite retirarla, salvo que Novedades esté seleccionada; al salir de la navegación principal también se retira.
+- Distingue el contenedor RecyclerView horizontal de ViewPager2 de una lista vertical que constituya una página de ViewPager clásico. Una estructura ambigua queda como desconocida.
+- La búsqueda inicial está limitada y se reutiliza la referencia al contenedor. No recorre los mensajes para decidir si hay una transición y no intercepta ni reproduce gestos.
+- El diagnóstico incluye el estado geométrico del contenedor y la última transición detectada, sin texto de chats ni capturas.
+
+## Cambios de la 0.4.1 (versión anterior)
 
 Esta actualización responde a la demora al entrar en Novedades y añade la pantalla independiente **Actualizaciones ocultas**.
 
@@ -49,16 +60,16 @@ Las versiones anteriores intentaban impedir la entrada a Novedades interceptando
 - Android 8.0 o posterior; compilada con SDK 36 y orientada a Android 16.
 - Reconoce etiquetas en español e inglés. Admite WhatsApp e intenta reconocer la barra de WhatsApp Business.
 - **La pantalla negra es reactiva:** el contenido puede verse brevemente antes de que Android notifique el cambio. No garantiza ocultarlo desde el primer fotograma ni impedir la pulsación inicial antes de colocar la cubierta pequeña.
-- Si WhatsApp no expone qué pestaña está seleccionada, solo se cubre el botón. La última comprobación indica expresamente ese caso.
+- La detección de transición requiere que WhatsApp exponga el contenedor principal y las posiciones de sus páginas a accesibilidad. Una raíz extremadamente estrecha sin más evidencia puede ser ambigua. Si no expone esos datos, no se puede garantizar esta protección; el diagnóstico muestra `UNKNOWN`. La detección de Novedades seleccionada y la de Actualizaciones ocultas siguen siendo independientes.
 - Cubre la pestaña Novedades y la lista Actualizaciones ocultas. Los visores individuales de estados y otras pantallas de canales quedan fuera de este detector; no cambia la interfaz interna de WhatsApp.
 - No está diseñada como un bloqueo inviolable. No actúa sobre barras laterales de tabletas ni pantallas externas.
 - La nueva versión queda pendiente de comprobar en el Samsung SM-S938B del usuario con WhatsApp real.
 
-Si la pantalla negra no aparece, entra en Novedades, vuelve a **Sin Novedades** y pulsa **Copiar diagnóstico**. El informe guarda por separado la última barra reconocida aunque después abras un chat. No incluye mensajes ni capturas.
+Si la pantalla negra no aparece, reproduce el fallo, vuelve a **Sin Novedades** y pulsa **Copiar diagnóstico**. El informe guarda por separado la última barra reconocida y la última transición detectada aunque después abras un chat. No incluye mensajes ni capturas.
 
 ## Privacidad y permisos
 
-Accesibilidad permite consultar la interfaz visible para localizar las pestañas y colocar las cubiertas. Solo se buscan etiquetas y estados de navegación de WhatsApp; los cambios de ventana sirven para retirar las cubiertas al salir. El diagnóstico técnico se guarda en el móvil y solo se copia al portapapeles al pulsar el botón correspondiente.
+Accesibilidad permite consultar la interfaz visible para localizar las pestañas, comprobar la posición de las páginas y colocar las cubiertas. Solo se buscan etiquetas, estados y geometría de navegación de WhatsApp; los cambios de ventana sirven para retirar las cubiertas al salir. El diagnóstico técnico se guarda en el móvil y solo se copia al portapapeles al pulsar el botón correspondiente.
 
 La app no guarda mensajes, no realiza capturas, no tiene permiso de Internet, no incluye analítica ni bibliotecas de terceros. No solicita exploración táctil, no registra `TouchInteractionController`, no llama a `dispatchGesture`, `performAction` ni `performGlobalAction`. El servicio está protegido por `BIND_ACCESSIBILITY_SERVICE` y se activa desde Ajustes.
 
@@ -106,16 +117,19 @@ La APK se firma con una clave privada propia; no es la firma de WhatsApp. Su cer
 
 En la primera compilación, el script crea `.signing/sin-novedades.p12` y `.signing/password.txt`. **No se deben subir a GitHub.** El archivo privado de firma entregado por separado permite conservar la misma identidad en futuras APK. Extrae su carpeta `.signing` dentro del proyecto antes de recompilar una actualización. Sin ese almacén, se generará una firma distinta y Android no aceptará la APK como actualización de la instalación existente.
 
-## Comprobaciones de la 0.4.1
+## Comprobaciones de la 0.4.2
 
-**76 pruebas**: 44 del detector de pestañas y 32 de geometría, títulos y programación de inspecciones. Incluyen títulos parciales o parecidos a mensajes, cabeceras sin botón para volver, editor visible, coordenadas fuera de pantalla, alta densidad, orientación RTL, conservación de la navegación y prioridad de los avisos de selección frente a los cambios ordinarios de contenido.
+**115 pruebas de lógica**: 44 del detector de pestañas, 32 de pantallas y programación de inspecciones, y 39 nuevas del contenedor de páginas. Cubren un gesto detenido a mitad, la primera inspección con las páginas ya desplazadas, la reversión, vecinos fuera de pantalla, recorte de límites, RTL, densidad alta y decoraciones estrechas. Estas pruebas no sustituyen la comprobación con los nodos reales de WhatsApp.
 
-La compilación directa verifica la firma original y la alineación de la APK. Las pruebas unitarias no miden el tiempo de dibujo ni reproducen el árbol accesible real de WhatsApp. La comprobación de integración de esta versión quedó pendiente porque el emulador Android 16 no terminó de arrancar; todavía falta comprobar las cubiertas y su rapidez en el móvil real.
+La compilación directa verifica la firma original y la alineación de la APK. La fixture Android también compila, pero esta versión no se ha ejecutado en un emulador ni en el Samsung con WhatsApp real. Las pruebas unitarias no miden el tiempo de dibujo ni validan la entrega de eventos de accesibilidad del teléfono.
 
 **La app de `tests/android-fixture` usa deliberadamente el paquete `com.whatsapp` para probar el filtro de paquetes en un emulador vacío. Nunca se debe instalar en un teléfono con WhatsApp real.** No es un cliente de WhatsApp y no forma parte de la APK entregada. Incluye una barra seleccionable, navegación a chats y una pantalla sintética de Actualizaciones ocultas con flecha para volver, además del caso de un chat con ese mismo título.
+
+La fixture admite `--ez pager true` para desplazar físicamente dos páginas manteniendo la selección anterior durante el gesto. Con `--ei held_offset 240`, deja 240 píxeles de la página siguiente visibles sin emitir un cambio final de selección; un valor negativo muestra la anterior. Sirve para comprobar cubierta, dedo quieto, reversión y salida por la barra inferior en un emulador vacío. Es una simulación sin dependencia de AndroidX y no reproduce el árbol exacto de WhatsApp ni todas las variantes de ViewPager2.
 
 ## Documentación Android
 
 - [Estados del nodo accesible](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo).
 - [Selección de elementos de colección](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo.CollectionItemInfo#isSelected()).
 - [Opciones del servicio y exploración táctil](https://developer.android.com/reference/android/accessibilityservice/AccessibilityServiceInfo#FLAG_REQUEST_TOUCH_EXPLORATION_MODE).
+- [Implementación AndroidX de ViewPager2 y su información accesible](https://android.googlesource.com/platform/frameworks/support/+/refs/heads/androidx-main/viewpager2/viewpager2/src/main/java/androidx/viewpager2/widget/ViewPager2.java).

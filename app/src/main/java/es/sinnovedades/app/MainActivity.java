@@ -79,7 +79,7 @@ public final class MainActivity extends Activity {
         enabled.setMinHeight(dp(60)); enabled.setChecked(prefs.getBoolean("enabled",true));
         enabled.setOnCheckedChangeListener((v,value)->{ prefs.edit().putBoolean("enabled",value).apply(); refresh(); });
         margin(layout,enabled,16);
-        margin(layout,text("Tapa el botón Novedades, el contenido de esa pestaña y la lista de Actualizaciones ocultas. Para salir, pulsa otra pestaña o utiliza la flecha de volver de la cabecera.",14,muted),2);
+        margin(layout,text("Tapa el botón Novedades, el contenido de esa pestaña y la lista de Actualizaciones ocultas. También cubre las transiciones laterales que detecta, aunque dejes el gesto a medias. Para salir, pulsa otra pestaña o utiliza la flecha de volver de la cabecera.",14,muted),2);
 
         margin(layout,text("Los toques y deslizamientos los recibe WhatsApp directamente. La app ya no utiliza el filtro táctil de las versiones anteriores.",14,muted),10);
 
@@ -100,9 +100,9 @@ public final class MainActivity extends Activity {
 
         TextView privacy=text("Privacidad",18,foreground);
         privacy.setTypeface(null,Typeface.BOLD); margin(layout,privacy,28);
-        margin(layout,text("Accesibilidad permite reconocer la barra y la pestaña seleccionada para colocar las cubiertas. No cambia de pestaña por su cuenta, no guarda mensajes y no tiene permiso de Internet.",14,muted),8);
+        margin(layout,text("Accesibilidad permite reconocer la barra, la pestaña seleccionada y la posición de las páginas para colocar las cubiertas. No cambia de pestaña por su cuenta, no guarda mensajes y no tiene permiso de Internet.",14,muted),8);
         margin(layout,button("Ayuda de instalación",v->help()),16);
-        margin(layout,text("Versión 0.4.1 · Android 8+\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
+        margin(layout,text("Versión 0.4.2 · Android 8+\nPuede requerir ajustes si WhatsApp cambia su interfaz.",12,muted),22);
         refresh();
     }
 
@@ -160,6 +160,8 @@ public final class MainActivity extends Activity {
             +"\nPantallas negras mostradas: "+ServiceStatus.curtainsShown
             +"\nInspecciones rápidas: "+ServiceStatus.quickScans+"; de bordes: "+ServiceStatus.fullScans
             +"\nÚltima inspección de WhatsApp: "+ServiceStatus.inspectionMillis+" ms"
+            +"\nComprobaciones de páginas: "+ServiceStatus.pagerChecks+"; transiciones cubiertas: "+ServiceStatus.pagerTransitions
+            +"\nÚltima transición detectada: "+saved.getString("transition_report","ninguna")
             +"\nÚltima comprobación de WhatsApp (fecha): "+saved.getLong("time",0)
             +"\n"+saved.getString("report","Todavía no hay ninguna comprobación de WhatsApp.")
             +"\nÚltima barra inferior reconocida (fecha): "+saved.getLong("navigation_time",0)
@@ -173,7 +175,7 @@ public final class MainActivity extends Activity {
         Runnable open=()->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
         if (serviceEnabled() || prefs.getBoolean("disclosure",false)) { open.run(); return; }
         new AlertDialog.Builder(this).setTitle("Activar Sin Novedades")
-            .setMessage("Android pedirá acceso al contenido de la pantalla. Sin Novedades lo utiliza para reconocer las pestañas de WhatsApp, tapar el botón Novedades y ocultar su contenido cuando esté seleccionada. La lista de Actualizaciones ocultas también se tapa, conservando su flecha de volver. Las otras pestañas quedan libres para salir. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
+            .setMessage("Android pedirá acceso al contenido de la pantalla. Sin Novedades lo utiliza para reconocer las pestañas de WhatsApp, tapar el botón Novedades y ocultar su contenido cuando esté seleccionada o las páginas estén a mitad de un deslizamiento. La lista de Actualizaciones ocultas también se tapa, conservando su flecha de volver. Las otras pestañas quedan libres para salir. Todo se procesa en tu móvil; no se guardan mensajes ni se envían datos.\n\nEn la siguiente pantalla busca Sin Novedades en las aplicaciones o servicios instalados y actívalo.")
             .setNegativeButton("Ahora no",null).setPositiveButton("Continuar",(d,w)->{
                 prefs.edit().putBoolean("disclosure",true).apply(); open.run();
             }).show();
@@ -211,7 +213,7 @@ public final class MainActivity extends Activity {
 
     private void help() {
         new AlertDialog.Builder(this).setTitle("Cómo activarlo")
-            .setMessage("1. Activa Sin Novedades en Ajustes > Accesibilidad > Aplicaciones o servicios instalados.\n\n2. Si Android muestra Ajustes restringidos, abre Ajustes > Aplicaciones > Sin Novedades > menú ⋮ > Permitir ajustes restringidos. Después vuelve a Accesibilidad.\n\n3. Abre WhatsApp. El botón Novedades queda cubierto. Si llegas a esa pestaña deslizando o antes de aparecer la cubierta, su contenido se tapa en negro cuando se detecta la selección. Pulsa otra pestaña de la barra inferior para salir. La lista de Actualizaciones ocultas también se tapa; usa su flecha de volver para salir.\n\nLa detección es reactiva: puede verse brevemente el contenido antes de que Android avise. Si WhatsApp no expone la pestaña seleccionada, no puede activarse la cubierta de Novedades; el diagnóstico indica ese caso. Actualizaciones ocultas se reconoce por su cabecera.\n\nSi sigue fallando, entra en Novedades, vuelve aquí y pulsa Copiar diagnóstico.\n\nReconoce etiquetas en español e inglés. No cubre enlaces directos a estados o canales sin la barra inferior.\n\nPuedes pausar la protección con el interruptor o desactivar el servicio en Ajustes.")
+            .setMessage("1. Activa Sin Novedades en Ajustes > Accesibilidad > Aplicaciones o servicios instalados.\n\n2. Si Android muestra Ajustes restringidos, abre Ajustes > Aplicaciones > Sin Novedades > menú ⋮ > Permitir ajustes restringidos. Después vuelve a Accesibilidad.\n\n3. Abre WhatsApp. El botón Novedades queda cubierto. Si llegas a esa pestaña deslizando o antes de aparecer la cubierta, su contenido se tapa en negro cuando se detecta la selección o una transición lateral. Si mantienes el dedo a mitad del gesto, la cubierta permanece mientras las páginas sigan desplazadas. Puede aparecer también al deslizar entre otras pestañas. Pulsa otra pestaña de la barra inferior para salir. La lista de Actualizaciones ocultas también se tapa; usa su flecha de volver para salir.\n\nLa detección es reactiva: puede verse brevemente el contenido antes de que Android avise. Si WhatsApp no expone la selección o la posición de las páginas, esa detección puede no funcionar; el diagnóstico indica el estado del contenedor de páginas. Una lectura incompleta no retira una cubierta de transición ya activada: debe detectarse una página alineada o salir de la navegación principal. Actualizaciones ocultas se reconoce por su cabecera.\n\nSi sigue fallando, reproduce el fallo, vuelve aquí y pulsa Copiar diagnóstico.\n\nReconoce etiquetas en español e inglés. No cubre enlaces directos a estados o canales sin la barra inferior.\n\nPuedes pausar la protección con el interruptor o desactivar el servicio en Ajustes.")
             .setPositiveButton("Entendido",null).show();
     }
 

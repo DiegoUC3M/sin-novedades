@@ -43,6 +43,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
     private final List<LabelRef> navigationNodes=new ArrayList<>();
     private int navigationWindow=-1;
     private TabDetector.Box navigationScreen;
+    private final PagerObserver pagerObserver=new PagerObserver();
     private final Runnable inspect=new Runnable() {
         public void run() {
             nextInspection=0;
@@ -96,6 +97,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
             int type=event.getEventType();
             boolean pagerScroll=type==AccessibilityEvent.TYPE_VIEW_SCROLLED
                 && String.valueOf(event.getClassName()).toLowerCase(Locale.ROOT).contains("viewpager");
+            if (pagerScroll) pagerObserver.searchSoon();
             boolean stateDescription=type==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                 && (event.getContentChangeTypes() & AccessibilityEvent.CONTENT_CHANGE_TYPE_STATE_DESCRIPTION)!=0;
             scheduleInspection(0,windowChange || type==AccessibilityEvent.TYPE_VIEW_SELECTED
@@ -204,6 +206,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
                 +"\nNodos: "+scan.visited+"; límite: "+scan.limited+"; editor: "+scan.editor
                 +"\nEtiquetas: "+scan.labels+"; botones candidatos: "+scan.tabs.size()+"\n"+scan.report;
             if (hidden!=null) {
+                pagerObserver.clear();
                 clearNavigationCache(); removeCover(); showCurtain(hidden);
                 ServiceStatus.whatsapp(this,"Actualizaciones ocultas tapadas. Usa la flecha de volver.",
                     details+"\nPantalla: hidden_updates; cabecera: "+scan.header.bar+"; pantalla negra: "+hidden);
@@ -220,13 +223,19 @@ public final class CoverService extends AccessibilityService implements SharedPr
                 navigationNodes.addAll(scan.refs); scan.refs.clear();
                 navigationWindow=root.getWindowId(); navigationScreen=screen;
             }
-            if (nav.updatesOpen()) showCurtain(nav.content); else removeCurtain();
+            // Selection can still say Chats while half of Updates is on screen.
+            // Inspect page geometry even on the footer-only fast path.
+            boolean transition=pagerObserver.inspect(root,nav.content,density,SystemClock.uptimeMillis());
+            if (nav.updatesOpen() || transition) showCurtain(nav.content); else removeCurtain();
             showCover(nav.target);
-            String status=nav.updatesOpen() ? "Novedades oculta con pantalla negra. Pulsa otra pestaña para salir."
+            ServiceStatus.transition(this,transition ? pagerObserver.report : null);
+            String status=transition ? "Deslizamiento entre pestañas cubierto. Termina el gesto o pulsa otra pestaña."
+                : nav.updatesOpen() ? "Novedades oculta con pantalla negra. Pulsa otra pestaña para salir."
                 : nav.selected.isEmpty() ? "Botón cubierto; WhatsApp no indica qué pestaña está seleccionada."
                 : "Botón Novedades cubierto. Gestos normales en WhatsApp.";
             ServiceStatus.whatsapp(this,status,details+"\nSelección: "+(nav.selected.isEmpty()?"desconocida":nav.selected)
-                +"\nCubierta: "+nav.target+"; pantalla negra: "+(veiled==null?"no":veiled.toString()),true);
+                +"\nCubierta: "+nav.target+"; pantalla negra: "+(veiled==null?"no":veiled.toString())
+                +"\n"+pagerObserver.report,true);
         } catch (RuntimeException failure) {
             removeOverlays();
             String status="No se pudo comprobar o cubrir la ventana: "+failure.getClass().getSimpleName();
@@ -542,7 +551,7 @@ public final class CoverService extends AccessibilityService implements SharedPr
         curtain=null; veiled=null;
     }
 
-    private void removeOverlays() { clearNavigationCache(); removeCurtain(); removeCover(); }
+    private void removeOverlays() { clearNavigationCache(); pagerObserver.clear(); removeCurtain(); removeCover(); }
 
     private void inactive(String status) { removeOverlays(); ServiceStatus.checked(status); }
 

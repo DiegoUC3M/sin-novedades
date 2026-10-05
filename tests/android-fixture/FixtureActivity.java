@@ -15,10 +15,22 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/** Synthetic navigation for an EMPTY EMULATOR. This is not a WhatsApp client. */
+/**
+ * Synthetic navigation for an EMPTY EMULATOR. This is not a WhatsApp client.
+ *
+ * Manual pager checks (never install on a phone with WhatsApp):
+ * am start -n com.whatsapp/fixture.FixtureActivity --ez pager true --ei tab 0
+ * Drag left, hold the finger still, then reverse without lifting: the page roots
+ * move while selected_tab stays 0. On release it changes only past half width.
+ * Add --ei held_offset 240 to hold 240 physical pixels of the NEXT page in view,
+ * with no completed-scroll or selected event. A negative value reveals PREVIOUS.
+ * Repeat from tab 2 and offset -240; tab 0 and offset -240 must stay at the edge.
+ * Existing selection, storm, quiet_return and standalone-page modes still apply.
+ */
 public final class FixtureActivity extends Activity {
     private SharedPreferences stats;
     private LinearLayout root;
@@ -30,6 +42,7 @@ public final class FixtureActivity extends Activity {
     private final TextView[] tabs=new TextView[4];
     private final String[] labels={"Chats","Novedades","Comunidades","Llamadas"};
     private int selectedTab;
+    private SyntheticPager pager;
     private final Runnable storm=new Runnable() {
         public void run() { state.setText("Evento de prueba "+(++events)); handler.postDelayed(this,15); }
     };
@@ -43,6 +56,7 @@ public final class FixtureActivity extends Activity {
     }
 
     private void base(String title) {
+        pager=null;
         root=new TestLayout(); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xffffffff);
         getWindow().setDecorFitsSystemWindows(false);
@@ -75,12 +89,18 @@ public final class FixtureActivity extends Activity {
         stats.edit().putString("screen","navigation").apply();
         Button chat=new Button(this); chat.setText("Entrar en un chat de prueba");
         chat.setOnClickListener(v->showChat()); root.addView(chat); remember(chat,"chat_center");
-        TextView content=new TextView(this); content.setText("Zona de gestos");
-        content.setGravity(Gravity.CENTER);
-        root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
-        remember(content,"content_center");
-        content.setOnClickListener(v->count("content_taps"));
-        content.setOnLongClickListener(v->{ count("long_presses"); return true; });
+        if (getIntent().getBooleanExtra("pager",false)) {
+            pager=new SyntheticPager();
+            root.addView(pager,new LinearLayout.LayoutParams(-1,0,1));
+            remember(pager,"content_center");
+        } else {
+            TextView content=new TextView(this); content.setText("Zona de gestos");
+            content.setGravity(Gravity.CENTER);
+            root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
+            remember(content,"content_center");
+            content.setOnClickListener(v->count("content_taps"));
+            content.setOnLongClickListener(v->{ count("long_presses"); return true; });
+        }
         LinearLayout bar=new LinearLayout(this) {
             @Override public CharSequence getAccessibilityClassName() { return "android.widget.TabWidget"; }
         };
@@ -133,6 +153,7 @@ public final class FixtureActivity extends Activity {
         }
         state.setText("Contenido de prueba: "+labels[selectedTab]);
         stats.edit().putInt("selected_tab",selectedTab).apply();
+        if (pager!=null) pager.movePages(0,false);
         tabs[selectedTab].sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_SELECTED);
     }
 
@@ -176,14 +197,85 @@ public final class FixtureActivity extends Activity {
 
     private void count(String key) { stats.edit().putInt(key,stats.getInt(key,0)+1).apply(); }
 
+    /** Native views only: exposes the same pager class marker without AndroidX. */
+    private final class SyntheticPager extends FrameLayout {
+        private final FrameLayout[] pages=new FrameLayout[4];
+        private float offset;
+        private boolean initialHoldApplied;
+        SyntheticPager() {
+            super(FixtureActivity.this);
+            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+            setClipChildren(true); setClipToPadding(true);
+            for (int i=0;i<pages.length;i++) {
+                FrameLayout page=new FrameLayout(FixtureActivity.this);
+                page.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+                page.setBackgroundColor(i%2==0 ? 0xfff4f4f4 : 0xffdcecf5);
+                TextView content=new TextView(FixtureActivity.this);
+                content.setText("Página de prueba "+labels[i]);
+                content.setGravity(Gravity.CENTER); content.setTextColor(0xff111111);
+                content.setOnClickListener(v->count("content_taps"));
+                content.setOnLongClickListener(v->{count("long_presses");return true;});
+                page.addView(content,new FrameLayout.LayoutParams(-1,-1));
+                pages[i]=page;
+                addView(page,new FrameLayout.LayoutParams(-1,-1));
+            }
+        }
+        @Override public CharSequence getAccessibilityClassName() {
+            return "androidx.viewpager.widget.ViewPager";
+        }
+        @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+            super.onInitializeAccessibilityNodeInfo(info); info.setScrollable(true);
+        }
+        @Override protected void onSizeChanged(int w,int h,int oldw,int oldh) {
+            super.onSizeChanged(w,h,oldw,oldh);
+            float requested=offset;
+            if (!initialHoldApplied && w>0) {
+                initialHoldApplied=true;
+                requested=-getIntent().getIntExtra("held_offset",0);
+            }
+            movePages(requested,false);
+        }
+        void movePages(float requested,boolean announce) {
+            int width=getWidth();
+            float next=Math.max(selectedTab<3 ? -width : 0,
+                    Math.min(selectedTab>0 ? width : 0,requested));
+            boolean changed=offset!=next; offset=next;
+            int incoming=selectedTab+(offset<0 ? 1 : offset>0 ? -1 : 0);
+            for (int i=0;i<pages.length;i++) {
+                pages[i].setTranslationX((i-selectedTab)*width+offset);
+                pages[i].setVisibility(i==selectedTab || i==incoming ? View.VISIBLE : View.INVISIBLE);
+            }
+            stats.edit().putInt("pager_offset",Math.round(offset))
+                    .putInt("pager_incoming",incoming).putInt("pager_width",width).apply();
+            if (announce && changed) {
+                AccessibilityEvent event=AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_SCROLLED);
+                event.setSource(this); event.setClassName(getAccessibilityClassName());
+                event.setPackageName(getPackageName()); event.setScrollable(true);
+                event.setScrollX(Math.round(selectedTab*width-offset)); event.setMaxScrollX(3*width);
+                event.setItemCount(4); event.setFromIndex(selectedTab); event.setToIndex(incoming);
+                if (getParent()!=null) getParent().requestSendAccessibilityEvent(this,event);
+                else event.recycle();
+            }
+        }
+        void release(boolean cancel) {
+            int destination=selectedTab;
+            if (!cancel && Math.abs(offset)>=getWidth()/2f && offset!=0)
+                destination+=offset<0 ? 1 : -1;
+            selectTab(destination);
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        }
+    }
+
     private final class TestLayout extends LinearLayout {
         private float startX,startY;
+        private float pagerStartOffset;
         private boolean horizontal,vertical;
         TestLayout() { super(FixtureActivity.this); }
         @Override public boolean onInterceptTouchEvent(MotionEvent e) {
             if (!navigation) return false;
             if (e.getActionMasked()==MotionEvent.ACTION_DOWN) {
                 startX=e.getX(); startY=e.getY(); horizontal=false; vertical=false;
+                pagerStartOffset=pager==null ? 0 : pager.offset;
             } else if (e.getActionMasked()==MotionEvent.ACTION_MOVE) {
                 float dx=Math.abs(e.getX()-startX),dy=Math.abs(e.getY()-startY);
                 int slop=ViewConfiguration.get(FixtureActivity.this).getScaledTouchSlop();
@@ -193,13 +285,20 @@ public final class FixtureActivity extends Activity {
             return false;
         }
         @Override public boolean onTouchEvent(MotionEvent e) {
+            if (horizontal && pager!=null && e.getActionMasked()==MotionEvent.ACTION_MOVE)
+                pager.movePages(pagerStartOffset+e.getX()-startX,true);
             if (e.getActionMasked()==MotionEvent.ACTION_UP) {
                 if (horizontal) {
                     count("horizontal_swipes");
-                    selectTab(selectedTab+(e.getX()<startX ? 1 : -1));
+                    if (pager!=null) {
+                        pager.movePages(pagerStartOffset+e.getX()-startX,true);
+                        pager.release(false);
+                    } else selectTab(selectedTab+(e.getX()<startX ? 1 : -1));
                 }
                 if (vertical) count("vertical_scrolls");
             }
+            if (e.getActionMasked()==MotionEvent.ACTION_CANCEL && horizontal && pager!=null)
+                pager.release(true);
             return true;
         }
         @Override public boolean requestSendAccessibilityEvent(View child,AccessibilityEvent e) {
